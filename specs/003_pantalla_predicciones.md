@@ -1,7 +1,7 @@
 # Spec 003: Pantalla e Interfaz de Predicciones y Resultados
 
 ## Propósito
-Proporcionar una interfaz web responsiva, estéticamente premium (tema oscuro, estilo neón, glassmorphism) para que Juliana Rincon, Papa y Domiciano Rincon ingresen sus marcadores predichos y registren de forma colaborativa los resultados reales una vez iniciados los partidos, utilizando el SDK de **Firebase**.
+Proporcionar una interfaz web responsiva, estéticamente premium (tema oscuro, estilo neón, glassmorphism) para que Juliana Rincon, Papa y Domiciano Rincon ingresen sus marcadores predichos y registren de forma colaborativa los resultados reales una vez iniciados los partidos, utilizando el SDK de **Firebase** y las credenciales de su cuenta de **Google**.
 
 ## Usuarios
 - **Juliana Rincon, Papa, Domiciano Rincon**: Participantes de la polla.
@@ -10,7 +10,7 @@ Proporcionar una interfaz web responsiva, estéticamente premium (tema oscuro, e
 1. **Diseño Visual de Alta Calidad**:
    - Barra lateral (Sidebar) izquierda para navegar entre "Inicio", "Predicciones" (seleccionado por defecto) y "Ranking".
    - Estilo oscuro premium con sombras y bordes brillantes de color verde neón / cian (estilo `image.png`).
-   - Encabezado con el nombre del usuario logueado en Firebase y su avatar.
+   - Encabezado con el nombre del usuario logueado en Firebase y su avatar (imagen de perfil de Google `photoURL`).
 2. **Selección de Fecha por Defecto**:
    - Al abrir la página, el sistema identifica la fecha actual del usuario en la zona horaria GMT-5 y selecciona esa fecha por defecto, mostrando los partidos programados para ese día.
    - Una barra horizontal deslizable permite cambiar de fecha manualmente.

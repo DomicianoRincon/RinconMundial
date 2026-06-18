@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import { 
-  signInWithEmailAndPassword, 
   signOut, 
-  onAuthStateChanged 
+  onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup
 } from "firebase/auth";
 import { 
   collection, 
   doc, 
   setDoc, 
-  getDocs, 
   onSnapshot 
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
@@ -17,17 +17,11 @@ import {
   Trophy, 
   Calendar, 
   LogOut, 
-  User, 
-  LogIn, 
-  ShieldAlert,
   Loader,
   Clock,
-  CheckCircle,
-  AlertCircle,
   Home,
   CheckSquare
 } from "lucide-react";
-import confetti from "canvas-confetti";
 
 // Preconfigured user mapping by email keyword
 const USER_PROFILES = {
@@ -75,8 +69,6 @@ const parseMatchTime = (dateStr, timeStr) => {
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [currentTab, setCurrentTab] = useState("predicciones");
 
@@ -101,11 +93,19 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Check Auth State
+  // Check Auth State and filter only allowed email keywords
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        setUser(firebaseUser);
+        const emailLower = firebaseUser.email?.toLowerCase() || "";
+        const isAllowed = emailLower.includes("domi") || emailLower.includes("juliana") || emailLower.includes("papa");
+        if (isAllowed) {
+          setUser(firebaseUser);
+        } else {
+          await signOut(auth);
+          setUser(null);
+          setAuthError("Acceso denegado: Tu cuenta de Google no está autorizada.");
+        }
       } else {
         setUser(null);
       }
@@ -172,29 +172,22 @@ export default function App() {
     return unsubscribe;
   }, [user]);
 
-  // Handle Log In
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  // Handle Google Login
+  const handleGoogleLogin = async () => {
     setAuthError("");
-    const emailLower = authEmail.toLowerCase().trim();
-
-    // Verification: limit to the 3 users
-    const matchedProfile = Object.keys(USER_PROFILES).find(key => emailLower.includes(key));
-    if (!matchedProfile) {
-      setAuthError("Acceso restringido: Solo Juliana Rincon, Papa y Domiciano Rincon pueden ingresar.");
-      return;
-    }
-
+    const provider = new GoogleAuthProvider();
     try {
-      await signInWithEmailAndPassword(auth, emailLower, authPassword);
+      const result = await signInWithPopup(auth, provider);
+      const emailLower = result.user.email?.toLowerCase() || "";
+      const isAllowed = emailLower.includes("domi") || emailLower.includes("juliana") || emailLower.includes("papa");
+      if (!isAllowed) {
+        await signOut(auth);
+        setAuthError("Acceso denegado: Tu cuenta de Google no está autorizada.");
+      }
     } catch (err) {
       console.error(err);
-      if (err.code === "auth/user-not-found") {
-        setAuthError("Usuario no registrado en la base de datos.");
-      } else if (err.code === "auth/wrong-password") {
-        setAuthError("Contraseña incorrecta.");
-      } else {
-        setAuthError("Error al iniciar sesión: " + err.message);
+      if (err.code !== "auth/popup-closed-by-user") {
+        setAuthError("Error al iniciar sesión con Google: " + err.message);
       }
     }
   };
@@ -209,14 +202,19 @@ export default function App() {
   };
 
   // Profile resolution for user email
-  const getUserProfile = (email) => {
-    if (!email) return { name: "Invitado", avatar: "?" };
+  const getUserProfile = (firebaseUser) => {
+    if (!firebaseUser) return { name: "Invitado", avatar: "?", photoURL: null };
+    const email = firebaseUser.email || "";
     const prefix = email.split("@")[0].toLowerCase();
     const matched = Object.keys(USER_PROFILES).find(key => prefix.includes(key));
-    return USER_PROFILES[matched] || { name: email, avatar: email.substring(0,2).toUpperCase() };
+    const profile = USER_PROFILES[matched] || { name: firebaseUser.displayName || email, avatar: email.substring(0,2).toUpperCase() };
+    return {
+      ...profile,
+      photoURL: firebaseUser.photoURL
+    };
   };
 
-  const currentUserProfile = getUserProfile(user?.email);
+  const currentUserProfile = getUserProfile(user);
 
   // Autosave prediction with debounce helper
   const debounceTimers = useRef({});
@@ -321,20 +319,26 @@ export default function App() {
     const userKeys = ["domi", "juliana", "papa"];
     const board = userKeys.map((key) => {
       let email = "";
-      if (key === "domi") email = "domi@mundial.com";
+      if (key === "domi") email = "domi@mundial.com"; // We keep these standardized emails for predictions keys matching in DB or we can adjust to match actual prefixes
       if (key === "juliana") email = "juliana@mundial.com";
       if (key === "papa") email = "papa@mundial.com";
 
+      // If they logged in with Google, their predictions are stored with their Google Email key!
+      // Let's resolve email key from prefix matching
       const profile = USER_PROFILES[key];
+      
+      // Look for any prediction key matching this prefix
       let totalPoints = 0;
       let exactHits = 0;
       let winnerHits = 0;
       let goalsHits = 0;
       let predictedCount = 0;
 
+      // We calculate from predictions matching this user's email prefix in predictions collection
       matches.forEach((m) => {
-        const predictionKey = `${email}_${m.id}`;
-        const pred = predictions[predictionKey];
+        // Find if there is a prediction in database with userEmail containing key
+        const predictionEntry = Object.keys(predictions).find(k => k.startsWith(key) && k.endsWith(m.id));
+        const pred = predictionEntry ? predictions[predictionEntry] : null;
         const real = officialResults[m.id];
 
         if (pred && pred.predictedHome !== "" && pred.predictedAway !== "") {
@@ -359,7 +363,7 @@ export default function App() {
       return {
         name: profile.name,
         avatar: profile.avatar,
-        email,
+        emailKey: key,
         totalPoints,
         exactHits,
         winnerHits,
@@ -378,7 +382,7 @@ export default function App() {
 
   const leaderboard = getLeaderboard();
 
-  // Flag icon CDN resolver (ISO code or prefix)
+  // Flag icon CDN resolver
   const getFlagUrl = (teamName) => {
     const nameMap = {
       "Mexico": "mx", "South Africa": "za", "South Korea": "kr", "Czech Republic": "cz",
@@ -388,7 +392,7 @@ export default function App() {
       "USA": "us", "Japan": "jp", "Morocco": "ma", "Croatia": "hr", "Belgium": "be",
       "Netherlands": "nl", "Ecuador": "ec", "Senegal": "sn", "Wales": "gb-wls", "Iran": "ir",
       "Poland": "pl", "Saudi Arabia": "sa", "Australia": "au", "Denmark": "dk", "Tunisia": "tn",
-      "Costa Rica": "cr", "Germany": "de", "Spain": "es", "Japan": "jp", "Costa Rica": "cr"
+      "Costa Rica": "cr"
     };
     const code = nameMap[teamName] || "un";
     return `https://flagcdn.com/w80/${code.toLowerCase()}.png`;
@@ -431,33 +435,15 @@ export default function App() {
             <Trophy className="logo-icon" />
             <h1 className="logo-text">RinconMundial</h1>
           </div>
-          <h2 className="login-title">Ingresar a la Polla</h2>
-          <form className="login-form" onSubmit={handleLogin}>
-            <div className="input-group">
-              <label className="input-label">CORREO ELECTRÓNICO</label>
-              <input 
-                className="input-field" 
-                type="email" 
-                placeholder="ej: juliana@mundial.com"
-                value={authEmail}
-                onChange={e => setAuthEmail(e.target.value)}
-                required
-              />
+          <h2 className="login-title" style={{ marginBottom: "36px" }}>Ingresar a la Polla Familiar</h2>
+          <button className="btn-primary" onClick={handleGoogleLogin}>
+            INICIAR SESIÓN CON GOOGLE
+          </button>
+          {authError && (
+            <div className="login-error" style={{ marginTop: "24px" }}>
+              {authError}
             </div>
-            <div className="input-group">
-              <label className="input-label">CONTRASEÑA</label>
-              <input 
-                className="input-field" 
-                type="password" 
-                placeholder="Ingresa tu contraseña"
-                value={authPassword}
-                onChange={e => setAuthPassword(e.target.value)}
-                required
-              />
-            </div>
-            {authError && <div className="login-error">{authError}</div>}
-            <button className="btn-primary" type="submit">INGRESAR</button>
-          </form>
+          )}
         </div>
       </div>
     );
@@ -516,7 +502,16 @@ export default function App() {
               <span className="user-name">{currentUserProfile.name}</span>
               <span className="user-role">Participante</span>
             </div>
-            <div className="user-avatar">{currentUserProfile.avatar}</div>
+            {currentUserProfile.photoURL ? (
+              <img 
+                src={currentUserProfile.photoURL} 
+                alt={currentUserProfile.name} 
+                className="user-avatar" 
+                style={{ objectFit: "cover" }} 
+              />
+            ) : (
+              <div className="user-avatar">{currentUserProfile.avatar}</div>
+            )}
           </div>
         </header>
 
@@ -539,7 +534,7 @@ export default function App() {
               <h2 style={{ fontSize: "20px", fontWeight: "800", marginTop: "12px" }}>Posiciones Actuales</h2>
               <div className="ranking-summary-grid">
                 {leaderboard.map((u, i) => (
-                  <div className={`summary-card summary-card-${i+1}`} key={u.email}>
+                  <div className={`summary-card summary-card-${i+1}`} key={u.emailKey}>
                     <span className="summary-card-label">PUESTO {i+1}</span>
                     <span className="summary-card-value" style={{ color: i === 0 ? "#fbbf24" : i === 1 ? "#94a3b8" : "#b45309" }}>
                       {u.name}
@@ -582,8 +577,8 @@ export default function App() {
                 ) : (
                   filteredMatches.map((m) => {
                     const isLocked = currentTime >= m.kickoff;
-                    const predictionKey = `${user.email}_${m.id}`;
-                    const userPred = predictions[predictionKey] || { predictedHome: "", predictedAway: "" };
+                    const predictionDocId = `${user.email}_${m.id}`;
+                    const userPred = predictions[predictionDocId] || { predictedHome: "", predictedAway: "" };
                     const realResult = officialResults[m.id] || { homeScore: "", awayScore: "" };
 
                     // Calculate countdown string
@@ -702,23 +697,20 @@ export default function App() {
                           <div className="rival-predictions-container">
                             <span className="rival-predictions-title">Predicciones Rivales</span>
                             {["domi", "juliana", "papa"].map((rivalKey) => {
-                              let rivalEmail = "";
-                              if (rivalKey === "domi") rivalEmail = "domi@mundial.com";
-                              if (rivalKey === "juliana") rivalEmail = "juliana@mundial.com";
-                              if (rivalKey === "papa") rivalEmail = "papa@mundial.com";
+                              // Match predictions where email starts with prefix
+                              const matchedEmailKey = Object.keys(predictions).find(k => k.startsWith(rivalKey) && k.endsWith(m.id));
+                              const rivalPred = matchedEmailKey ? predictions[matchedEmailKey] : null;
 
-                              if (rivalEmail === user.email) return null; // Skip current user
+                              if (matchedEmailKey && matchedEmailKey.split("_")[0] === user.email) return null; // Skip current user
                               
                               const rivalProfile = USER_PROFILES[rivalKey];
-                              const rivalPred = predictions[`${rivalEmail}_${m.id}`];
-
                               const rivalHasPred = rivalPred && rivalPred.predictedHome !== "" && rivalPred.predictedAway !== "";
                               const rPoints = rivalHasPred && realResult.homeScore !== "" && realResult.awayScore !== ""
                                 ? calculatePoints(rivalPred.predictedHome, rivalPred.predictedAway, realResult.homeScore, realResult.awayScore)
                                 : null;
 
                               return (
-                                <div className="rival-row" key={rivalEmail}>
+                                <div className="rival-row" key={rivalKey}>
                                   <span className="rival-name">{rivalProfile.name}</span>
                                   <div>
                                     <span className="rival-score">
@@ -758,7 +750,7 @@ export default function App() {
                   </thead>
                   <tbody>
                     {leaderboard.map((u, index) => (
-                      <tr className="ranking-row" key={u.email}>
+                      <tr className="ranking-row" key={u.emailKey}>
                         <td className={`rank-position rank-position-${index+1}`}>
                           #{index + 1}
                         </td>
