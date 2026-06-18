@@ -1,0 +1,1 @@
+https://github.com/openfootball/worldcup.json/tree/master
