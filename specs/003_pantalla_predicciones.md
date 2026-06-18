@@ -1,44 +1,84 @@
 # Spec 003: Pantalla e Interfaz de Predicciones y Resultados
 
 ## Propósito
-Proporcionar una interfaz web responsiva, estéticamente premium (tema oscuro, estilo neón, glassmorphism) para que Juliana Rincon, Papa y Domiciano Rincon ingresen sus marcadores predichos y registren de forma colaborativa los resultados reales una vez iniciados los partidos, utilizando el SDK de **Firebase** y las credenciales de su cuenta de **Google**.
+Proporcionar una interfaz web de página única (SPA) con tres vistas navegables (Inicio, Predicciones, Ranking) para que los tres participantes ingresen sus predicciones, registren resultados reales y consulten posiciones, con un diseño oscuro premium con estilo neón y glassmorphism.
 
 ## Usuarios
 - **Juliana Rincon, Papa, Domiciano Rincon**: Participantes de la polla.
 
 ## Requisitos
-1. **Diseño Visual de Alta Calidad**:
-   - Barra lateral (Sidebar) izquierda para navegar entre "Inicio", "Predicciones" (seleccionado por defecto) y "Ranking".
-   - Estilo oscuro premium con sombras y bordes brillantes de color verde neón / cian (estilo `image.png`).
-   - Encabezado con el nombre del usuario logueado en Firebase y su avatar (imagen de perfil de Google `photoURL`).
-2. **Selección de Fecha por Defecto**:
-   - Al abrir la página, el sistema identifica la fecha actual del usuario en la zona horaria GMT-5 y selecciona esa fecha por defecto, mostrando los partidos programados para ese día.
-   - Una barra horizontal deslizable permite cambiar de fecha manualmente.
-3. **Tarjetas de Partido (Match Cards) y Bloqueo**:
-   - Cada tarjeta representa un partido con los datos de equipos, banderas, hora y estadio.
-   - **Lógica de Bloqueo Temporal**:
-     - **Antes del inicio del partido**: Los inputs de la predicción del usuario son editables.
-     - **Durante o después del partido (Inicio ya ocurrido)**: Los inputs de predicción se deshabilitan inmediatamente (solo lectura).
-     - La comparación de tiempos se realiza convirtiendo la hora programada del partido y la hora actual del sistema a la zona horaria GMT-5.
-4. **Registro de Resultados Reales (Colaborativo)**:
-   - Una vez que la hora actual del sistema supera la hora de inicio de un partido, aparece en la tarjeta del partido un campo adicional visible para los 3 usuarios: **"Marcador Real (Resultado Oficial)"**.
-   - Cualquier usuario puede ingresar el resultado final real del partido en este campo.
-   - Al guardar el marcador real, este se sincroniza en la colección `official_results` de **Firebase Firestore** para calcular el ranking.
-5. **Botón Limpiar Todo**:
-   - Botón "LIMPIAR TODO" que borra temporalmente los marcadores no guardados de la predicción en la fecha seleccionada.
+
+### Layout General
+1. **SPA sin Router**: La aplicación no usa React Router. La navegación entre vistas se gestiona con estado local (`currentTab`: `"inicio"` | `"predicciones"` | `"ranking"`). No hay URLs separadas por vista.
+2. **Sidebar de Navegación**: Barra lateral izquierda fija con tres ítems: "INICIO" (ícono Home), "PREDICCIONES" (ícono CheckSquare) y "RANKING" (ícono Trophy). La tab activa al iniciar sesión es siempre "predicciones".
+3. **Encabezado**: Muestra a la derecha el nombre del usuario logueado (resuelto desde `USER_PROFILES`) y su avatar (foto de Google `photoURL` o iniciales del perfil).
+
+### Vista: Inicio
+4. **Tarjeta de bienvenida**: Saludo personalizado con el nombre del usuario y descripción breve del funcionamiento de la polla.
+5. **Mini tabla de posiciones**: Muestra los 3 participantes ordenados por puntos (calculado en tiempo real a partir de predicciones y resultados en Firestore), con puesto, nombre, puntos totales y número de marcadores exactos.
+
+### Vista: Predicciones
+6. **Selector de fecha (ribbon)**: Barra horizontal desplazable con un botón por cada fecha que tiene partidos. La fecha activa se resalta. Las fechas se muestran en español (ej. "JUNIO 18").
+7. **Tarjetas de partido (Match Cards)**: Una tarjeta por partido de la fecha seleccionada, con:
+   - Header: grupo del partido y contador regresivo (countdown).
+   - Cuerpo: bandera (vía flagcdn.com), abreviatura del equipo (3 letras) y nombre en español del equipo local, inputs de predicción, equipo visitante.
+   - Footer: nombre del estadio (`ground`) e indicador de estado del autoguardado.
+8. **Countdown por tarjeta**: Mientras el partido no haya comenzado, muestra `CIERRA EN Xh Ym Zs` (o `Ym Zs` si faltan menos de 60 minutos). Una vez iniciado, muestra `CERRADO`. El contador se actualiza cada segundo.
+9. **Bloqueo de Inputs por Tiempo**:
+   - Antes del inicio del partido (`currentTime < kickoff`): inputs de predicción habilitados.
+   - Desde el inicio del partido (`currentTime >= kickoff`): inputs de predicción deshabilitados (solo lectura).
+   - La comparación usa los objetos `Date` generados al parsear el JSON con sus offsets UTC.
+10. **Sección de Marcador Real** (solo cuando partido bloqueado): Dos inputs numéricos para ingresar el resultado oficial. Cualquier usuario puede editar y guardar. Se persiste en Firestore (`official_results/{matchId}`) sin debounce (guardado inmediato).
+11. **Panel de Predicciones Rivales** (solo cuando partido bloqueado): Muestra las predicciones de los otros dos participantes. Para cada rival se muestra su nombre, su pronóstico (`predictedHome - predictedAway`) o "Sin pronóstico", y los puntos obtenidos (badge `+N PTS`) si ya hay marcador real registrado. El usuario actual no aparece en la lista de rivales.
+
+### Vista: Ranking
+12. **Tabla de posiciones completa**: Columnas: Puesto, Competidor (avatar + nombre), Pronósticos (número de partidos predichos), Acierto Exacto (+3), Acierto Ganador (+2), Puntos Totales. Ordenada de mayor a menor puntos, con desempate por aciertos exactos y luego por aciertos ganador.
 
 ## Casos de Borde
-- **Inputs Vacíos al Iniciar**: Si un usuario no ingresó predicción antes de que iniciara el partido, su campo de predicción se bloquea vacío (interpretado como 0 puntos obtenidos).
-- **Corrección de Marcador Real**: Si algún participante ingresa mal el marcador real, cualquiera de los 3 usuarios puede corregir el valor en la tarjeta correspondiente y guardar de nuevo, actualizando Firestore y recalculando el ranking.
+- **Fecha sin partidos**: Si la fecha seleccionada no tiene partidos, se muestra un estado vacío con ícono de calendario y mensaje descriptivo.
+- **Partido sin predicción**: Si el partido ya inició y el usuario no tenía predicción guardada, sus inputs quedan vacíos y bloqueados (equivale a 0 puntos).
+- **Marcador real no ingresado**: El panel de rivales muestra las predicciones pero no el badge de puntos hasta que haya un marcador real en Firestore.
+- **Bandera no encontrada**: Si `flagcdn.com` no puede cargar la imagen de un equipo, el elemento imagen se oculta (`onError: e.target.style.display='none'`).
 
 ## Criterios de Aceptación
 
 ### Escenario: Bloqueo de edición al iniciar el partido
-- **Dado** que un partido inicia a las 11:00 A.M. GMT-5
-- **Cuando** la hora actual del sistema llega a las 11:00 A.M. o más tarde
-- **Entonces** los inputs de predicción de goles se bloquean (read-only) y se despliega el campo para ingresar el "Marcador Real"
+- **Dado** que un partido tiene `kickoff` a las 11:00 A.M. UTC-5
+- **Cuando** la hora actual del sistema llega a las 11:00 A.M. UTC o supera ese instante
+- **Entonces** los inputs de predicción se deshabilitan, el countdown muestra "CERRADO", y aparecen la sección de marcador real y el panel de predicciones rivales
+
+### Escenario: Countdown visible antes del partido
+- **Dado** que un partido está a 2 horas 15 minutos 30 segundos de iniciar
+- **Cuando** el usuario ve la tarjeta
+- **Entonces** el countdown muestra "CIERRA EN 2h 15m 30s" y se actualiza cada segundo
 
 ### Escenario: Registro colaborativo del resultado oficial
-- **Dado** que un partido ya inició (está bloqueado para predicciones)
-- **Cuando** Papa ingresa el marcador real "3" - "1" y guarda
-- **Entonces** el resultado se almacena en la colección `official_results` de Firebase Firestore y es visible inmediatamente para Juliana Rincon y Domiciano Rincon
+- **Dado** que un partido ya inició (bloqueado)
+- **Cuando** Papa ingresa el marcador real "3" - "1"
+- **Entonces** el resultado se guarda inmediatamente en `official_results` de Firestore y Juliana y Domiciano ven el badge con los puntos obtenidos en el panel de rivales
+
+### Escenario: Panel de rivales oculto antes del partido
+- **Dado** que un partido aún no ha iniciado
+- **Cuando** el usuario ve la tarjeta de ese partido
+- **Entonces** el panel de predicciones rivales no es visible
+
+### Escenario: Vista de Inicio con mini tabla
+- **Dado** que hay predicciones y resultados en Firestore
+- **Cuando** el usuario navega a la tab "INICIO"
+- **Entonces** se muestra la tabla de posiciones con los 3 participantes ordenados por puntos totales
+
+---
+
+## Assumptions to review
+
+1. La lógica de rivalidad filtra al usuario actual comparando `matchedEmailKey.split("_")[0] === user.email`, lo que asume que el email del usuario logueado comienza con el mismo prefijo que la clave en Firestore — Impact: HIGH
+   Correct this if: el email de un usuario contiene múltiples prefijos (ej. `papa_domi@...`).
+
+2. No existe "Botón Limpiar Todo" en la implementación actual — Impact: MEDIUM
+   Correct this if: se decide implementar limpieza de predicciones no guardadas por fecha.
+
+3. Las banderas se obtienen de `flagcdn.com` con código de país resuelto desde un mapa estático — Impact: LOW
+   Correct this if: se agregan equipos que no están en el mapa o se quiere un proveedor de banderas distinto.
+
+4. La traducción de nombres de equipos al español usa un mapa estático parcial; equipos no incluidos se muestran en inglés — Impact: LOW
+   Correct this if: se quiere traducción completa de todos los 48 equipos del mundial 2026.

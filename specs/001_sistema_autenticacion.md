@@ -7,26 +7,44 @@ Permitir el acceso exclusivo a la aplicación utilizando cuentas de Google (Goog
 - **Juliana Rincon, Papa, Domiciano Rincon**: Los tres participantes únicos de la polla. Inician sesión usando su cuenta personal de Google.
 
 ## Requisitos
-1. **Acceso Exclusivo con Google**: El sistema debe restringir el acceso a toda la aplicación mediante una pantalla de inicio de sesión (Login) utilizando el SDK de **Firebase Auth** con el proveedor de **GoogleAuthProvider** (método `signInWithPopup`).
+1. **Acceso Exclusivo con Google**: El sistema restringe el acceso a toda la aplicación mediante una pantalla de inicio de sesión que usa Firebase Auth con `GoogleAuthProvider` y `signInWithPopup`.
 2. **Filtro de Usuarios Autorizados**:
-   - Una vez autenticado el usuario con Google, el sistema debe validar si el correo electrónico de la cuenta de Google pertenece a alguno de los 3 usuarios válidos.
-   - [ASSUMPTION: Se considerará correo válido si contiene los términos clave: `domi`, `juliana` o `papa`. De lo contrario, se deniega el acceso e inmediatamente se cierra la sesión de Firebase (`signOut`)].
-3. **Persistencia de Sesión**: La sesión de Google Auth debe persistir localmente en el navegador para evitar volver a autenticar en cada visita.
-4. **Identificación y Avatar**: El sistema debe recuperar el `displayName` de la cuenta de Google para mostrar el nombre en el encabezado (ej. "Domiciano Rincon") junto a su foto de perfil de Google (`photoURL`), o sus iniciales si la foto no está disponible.
-5. **Seguridad de Datos**: Solo los usuarios autenticados y validados en el filtro de correo pueden consultar predicciones cerradas y guardar marcadores.
+   - Una vez autenticado el usuario con Google, el sistema valida si el correo electrónico contiene alguno de los prefijos autorizados: `domi`, `juliana` o `papa` (comparación en minúsculas sobre la dirección completa de email).
+   - Si el email no contiene ninguno de esos prefijos, se llama a `signOut(auth)` inmediatamente y se muestra el error en pantalla.
+3. **Persistencia de Sesión**: La persistencia de sesión la gestiona Firebase Auth por defecto (almacenamiento local del navegador). No se configura explícitamente `enableIndexedDbPersistence`.
+4. **Identificación y Avatar**:
+   - El nombre visible se resuelve a partir de un mapa estático `USER_PROFILES` indexado por prefijo de email (`domi` → "Domiciano Rincon", `juliana` → "Juliana Rincon", `papa` → "Papa").
+   - El avatar es la imagen `photoURL` de Google; si no está disponible, se muestran las iniciales del perfil mapeado.
+5. **Seguridad de Datos**: Solo los usuarios autenticados y validados acceden a la vista principal y a los datos de Firestore (predicciones y resultados).
 
 ## Casos de Borde
-- **Cuenta de Google no Autorizada**: Si un usuario externo inicia sesión con una cuenta de Google como `externo@gmail.com`, el sistema debe mostrar el mensaje: *"Acceso denegado: Tu cuenta de Google no está autorizada."*, cerrar la sesión de Firebase de inmediato y mantener al usuario en la pantalla de login.
-- **Cancelación del Pop-up**: Si el usuario cierra el pop-up de Google antes de completar la autenticación, la aplicación muestra una notificación amigable de cancelación sin bloquear la UI.
+- **Cuenta de Google no Autorizada**: Si el email autenticado no contiene ningún prefijo válido, el sistema muestra *"Acceso denegado: Tu cuenta de Google no está autorizada."*, llama a `signOut` y mantiene al usuario en la pantalla de login.
+- **Cancelación del Pop-up**: Si el usuario cierra el pop-up antes de completar la autenticación (`auth/popup-closed-by-user`), la aplicación no muestra error y la UI no queda bloqueada.
+- **Error genérico de Google**: Cualquier otro error de Firebase Auth muestra el mensaje del error al usuario en pantalla.
 
 ## Criterios de Aceptación
 
 ### Escenario: Login exitoso con cuenta de Google válida
-- **Dado** que un usuario está en `/login`
-- **When** hace clic en "Iniciar sesión con Google" y selecciona su cuenta autorizada (ej. `domicianorincon@gmail.com`)
-- **Entonces** Firebase completa el login, el sistema valida el correo, lo redirige a `/predicciones` y muestra su nombre e imagen de Google en la barra superior
+- **Dado** que un usuario está en la pantalla de login
+- **Cuando** hace clic en "INICIAR SESIÓN CON GOOGLE" y selecciona su cuenta autorizada (ej. `domicianorincon@gmail.com`)
+- **Entonces** Firebase completa el login, el sistema valida el email, desaparece la pantalla de login, aparece el layout principal con la tab "Predicciones" activa por defecto, y muestra el nombre e imagen de Google del usuario en el encabezado
 
 ### Escenario: Denegación de acceso para cuenta de Google no válida
-- **Dado** que un usuario está en `/login`
-- **When** hace clic en "Iniciar sesión con Google" y selecciona una cuenta de correo externa (ej. `desconocido@gmail.com`)
-- **Entonces** Firebase completa la sesión temporal, el sistema identifica que no es una cuenta autorizada, llama a `signOut`, muestra un error visual y el usuario permanece en la pantalla de `/login`
+- **Dado** que un usuario está en la pantalla de login
+- **Cuando** hace clic en "INICIAR SESIÓN CON GOOGLE" y selecciona una cuenta de correo externa (ej. `desconocido@gmail.com`)
+- **Entonces** Firebase completa la sesión temporal, el sistema identifica que no es una cuenta autorizada, llama a `signOut`, muestra el mensaje de error debajo del botón y el usuario permanece en la pantalla de login
+
+### Escenario: Cancelación del pop-up de Google
+- **Dado** que un usuario cierra el pop-up de Google sin seleccionar una cuenta
+- **Cuando** el pop-up se cierra (`auth/popup-closed-by-user`)
+- **Entonces** la aplicación no muestra ningún mensaje de error y el botón de login permanece disponible
+
+---
+
+## Assumptions to review
+
+1. El prefijo se compara sobre el email completo (no solo el local-part antes del @), lo que significa que un email como `something_domi_test@company.com` también sería válido — Impact: MEDIUM
+   Correct this if: se quiere restringir la comparación solo al local-part del email.
+
+2. No hay cierre de sesión automático por inactividad — Impact: LOW
+   Correct this if: se requiere expiración de sesión por tiempo.

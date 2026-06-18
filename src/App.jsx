@@ -13,15 +13,26 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import worldCupData from "./worldcup.json";
-import { 
-  Trophy, 
-  Calendar, 
-  LogOut, 
+import {
+  Trophy,
+  Calendar,
+  LogOut,
   Loader,
   Clock,
   Home,
-  CheckSquare
+  CheckSquare,
+  RefreshCw
 } from "lucide-react";
+
+const ESPN_TO_LOCAL_TEAM = {
+  "Czechia": "Czech Republic",
+  "Bosnia-Herzegovina": "Bosnia & Herzegovina",
+  "United States": "USA",
+  "Korea Republic": "South Korea",
+  "IR Iran": "Iran",
+  "Côte d'Ivoire": "Ivory Coast",
+  "Türkiye": "Turkey",
+};
 
 // Preconfigured user mapping by email keyword
 const USER_PROFILES = {
@@ -81,6 +92,10 @@ export default function App() {
   const [predictions, setPredictions] = useState({}); // Key: userEmail_matchId -> { home, away }
   const [officialResults, setOfficialResults] = useState({}); // Key: matchId -> { home, away }
   const [saveStatus, setSaveStatus] = useState({}); // Key: matchId -> 'saving' | 'saved' | 'error'
+
+  // ESPN live scores state
+  const [liveScores, setLiveScores] = useState({});
+  const [isFetchingLive, setIsFetchingLive] = useState(false);
 
   // Time tracking
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -279,6 +294,70 @@ export default function App() {
       await setDoc(doc(db, "official_results", matchId), updated);
     } catch (err) {
       console.error("Error saving official score: ", err);
+    }
+  };
+
+  // Save both official scores atomically (used by ESPN "Usar" button)
+  const saveBothOfficialScores = async (matchId, homeScore, awayScore) => {
+    const updated = {
+      matchId,
+      homeScore: homeScore === "" ? "" : parseInt(homeScore, 10),
+      awayScore: awayScore === "" ? "" : parseInt(awayScore, 10),
+      updatedBy: user.email
+    };
+    setOfficialResults(prev => ({ ...prev, [matchId]: updated }));
+    try {
+      await setDoc(doc(db, "official_results", matchId), updated);
+    } catch (err) {
+      console.error("Error saving official score:", err);
+    }
+  };
+
+  // Fetch live scores from ESPN public API
+  const fetchLiveScores = async () => {
+    setIsFetchingLive(true);
+    try {
+      const res = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard");
+      const data = await res.json();
+      const events = data.events || [];
+
+      const newLiveScores = {};
+      events.forEach(event => {
+        const comp = event.competitions?.[0];
+        if (!comp) return;
+
+        const competitors = comp.competitors || [];
+        const espnHome = competitors.find(c => c.homeAway === "home");
+        const espnAway = competitors.find(c => c.homeAway === "away");
+        if (!espnHome || !espnAway) return;
+
+        const localHome = ESPN_TO_LOCAL_TEAM[espnHome.team.displayName] || espnHome.team.displayName;
+        const localAway = ESPN_TO_LOCAL_TEAM[espnAway.team.displayName] || espnAway.team.displayName;
+
+        const matched = matches.find(m =>
+          (m.team1 === localHome && m.team2 === localAway) ||
+          (m.team1 === localAway && m.team2 === localHome)
+        );
+        if (!matched) return;
+
+        const flipped = matched.team1 === localAway;
+        const status = comp.status;
+
+        newLiveScores[matched.id] = {
+          homeScore: flipped ? espnAway.score : espnHome.score,
+          awayScore: flipped ? espnHome.score : espnAway.score,
+          statusName: status?.type?.name || "",
+          statusDesc: status?.type?.description || "",
+          displayClock: status?.displayClock || "",
+          period: status?.period || 0,
+        };
+      });
+
+      setLiveScores(newLiveScores);
+    } catch (err) {
+      console.error("Error fetching ESPN live scores:", err);
+    } finally {
+      setIsFetchingLive(false);
     }
   };
 
@@ -555,14 +634,28 @@ export default function App() {
               <div className="date-selector-ribbon">
                 <div className="dates-scroll-container">
                   {dates.map((d) => (
-                    <button 
-                      key={d} 
+                    <button
+                      key={d}
                       className={`date-btn ${selectedDate === d ? "active" : ""}`}
                       onClick={() => setSelectedDate(d)}
                     >
                       {formatDateToSpanish(d)}
                     </button>
                   ))}
+                </div>
+                <div className="date-ribbon-actions">
+                  <button
+                    className="btn-secondary"
+                    onClick={fetchLiveScores}
+                    disabled={isFetchingLive}
+                    title="Consultar marcadores en vivo de ESPN"
+                  >
+                    <RefreshCw
+                      size={14}
+                      style={{ animation: isFetchingLive ? "spin 1s linear infinite" : "none" }}
+                    />
+                    {isFetchingLive ? "Actualizando..." : "Actualizar"}
+                  </button>
                 </div>
               </div>
 
@@ -663,6 +756,40 @@ export default function App() {
                             </div>
                           )}
                         </div>
+
+                        {/* ESPN live score banner (only after match start, only when fetched) */}
+                        {isLocked && liveScores[m.id] && (() => {
+                          const live = liveScores[m.id];
+                          const isInProgress = live.statusName === "IN_PROGRESS" || live.statusName === "STATUS_IN_PROGRESS";
+                          const isFinal = live.statusName === "STATUS_FINAL" || live.statusName === "FINAL" || live.statusDesc === "Final";
+                          return (
+                            <div className="live-score-banner">
+                              <div className="live-banner-left">
+                                {isInProgress && <span className="live-badge">EN VIVO</span>}
+                                {isFinal && <span className="final-badge">FINALIZADO</span>}
+                                {!isInProgress && !isFinal && (
+                                  <span className="final-badge">{live.statusDesc}</span>
+                                )}
+                                {isInProgress && (
+                                  <span className="live-minute">{live.displayClock}</span>
+                                )}
+                              </div>
+                              <div className="live-score-display">
+                                <span className="live-score-number">{live.homeScore}</span>
+                                <span className="live-score-dash">-</span>
+                                <span className="live-score-number">{live.awayScore}</span>
+                              </div>
+                              {(isInProgress || isFinal) && (
+                                <button
+                                  className="btn-use-score"
+                                  onClick={() => saveBothOfficialScores(m.id, live.homeScore, live.awayScore)}
+                                >
+                                  Usar
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {/* Collaborative actual result entry (only after match start) */}
                         {isLocked && (
