@@ -865,10 +865,10 @@ export default function App() {
                       }
                       const ptsCat = myPts === 7 ? "ACIERTO EXACTO" : myPts > 0 ? "ACIERTO PARCIAL" : "SIN PUNTOS";
                       const breakdown = [];
-                      if (isExact)            breakdown.push("Exacto +3");
-                      if (isWinner)           breakdown.push("Resultado +2");
-                      if (!isExact && homeGoal) breakdown.push("Gol L +1");
-                      if (!isExact && awayGoal) breakdown.push("Gol V +1");
+                      if (isExact)   breakdown.push("Exacto +3");
+                      if (isWinner)  breakdown.push("Resultado +2");
+                      if (homeGoal)  breakdown.push("Gol L +1");
+                      if (awayGoal)  breakdown.push("Gol V +1");
                       const groupLabel = m.group ? m.group.replace("Group ", "GRUPO ") : "";
 
                       return (
@@ -1082,8 +1082,8 @@ export default function App() {
                               <div className="own-points-tags">
                                 {isExact && <span className="bp-tag bp-exact">+3 Exacto</span>}
                                 {isWinner && <span className="bp-tag bp-winner">+2 Ganador</span>}
-                                {!isExact && homeGoal && <span className="bp-tag bp-goal">+1 Local</span>}
-                                {!isExact && awayGoal && <span className="bp-tag bp-goal">+1 Visitante</span>}
+                                {homeGoal && <span className="bp-tag bp-goal">+1 Local</span>}
+                                {awayGoal && <span className="bp-tag bp-goal">+1 Visitante</span>}
                                 {myPts === 0 && <span className="bp-tag bp-zero">0 pts</span>}
                                 <span className="own-points-total">{myPts} PTS</span>
                               </div>
@@ -1209,8 +1209,8 @@ export default function App() {
                                               <div className="breakdown-points">
                                                 {exactHit && <span className="bp-tag bp-exact">+3 Exacto</span>}
                                                 {winnerHit && <span className="bp-tag bp-winner">+2 Ganador</span>}
-                                                {!exactHit && homeGoal && <span className="bp-tag bp-goal">+1 Local</span>}
-                                                {!exactHit && awayGoal && <span className="bp-tag bp-goal">+1 Visitante</span>}
+                                                {homeGoal && <span className="bp-tag bp-goal">+1 Local</span>}
+                                                {awayGoal && <span className="bp-tag bp-goal">+1 Visitante</span>}
                                                 {pts === 0 && <span className="bp-tag bp-zero">0 pts</span>}
                                               </div>
                                             ) : (
