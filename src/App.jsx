@@ -20,8 +20,7 @@ import {
   Loader,
   Clock,
   Home,
-  CheckSquare,
-  RefreshCw
+  CheckSquare
 } from "lucide-react";
 
 const ESPN_TO_LOCAL_TEAM = {
@@ -34,12 +33,20 @@ const ESPN_TO_LOCAL_TEAM = {
   "Türkiye": "Turkey",
 };
 
-// Preconfigured user mapping by email keyword
-const USER_PROFILES = {
-  "domi": { name: "Domiciano Rincon", avatar: "DR" },
-  "juliana": { name: "Juliana Rincon", avatar: "JR" },
-  "papa": { name: "Papa", avatar: "P" }
-};
+const SANTO_Y_SENA = "hkx213bp";
+
+const getInitials = (name = "") =>
+  name.split(" ").map(w => w[0]).join("").toUpperCase().substring(0, 2) || "?";
+
+const isLiveStatus = (live) =>
+  live?.statusName?.includes("IN_PROGRESS") ||
+  live?.statusDesc?.includes("Half") ||
+  live?.statusDesc === "In Progress";
+
+const isFinalStatus = (live) =>
+  live?.statusName?.includes("FINAL") ||
+  live?.statusDesc === "Final" ||
+  live?.statusDesc === "Full Time";
 
 // Simple date translator
 const MONTHS = {
@@ -78,10 +85,21 @@ const parseMatchTime = (dateStr, timeStr) => {
 };
 
 export default function App() {
+  // Detect invite mode from URL: ?invite
+  const isInviteMode = new URLSearchParams(window.location.search).has("invite");
+
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState("");
+  const [passphrase, setPassphrase] = useState("");
   const [currentTab, setCurrentTab] = useState("predicciones");
+  const [registeredUsers, setRegisteredUsers] = useState([]);
+
+  // Today's date in GMT-5 (Bogota)
+  const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
+
+  // Ref for auto-scrolling the active date button into view
+  const selectedDateRef = useRef(null);
 
   // Matches schedules and formatting
   const [matches, setMatches] = useState([]);
@@ -95,7 +113,12 @@ export default function App() {
 
   // ESPN live scores state
   const [liveScores, setLiveScores] = useState({});
-  const [isFetchingLive, setIsFetchingLive] = useState(false);
+
+  // Ranking row expanded user
+  const [expandedRankingUser, setExpandedRankingUser] = useState(null);
+
+  // Show welcome screen after fresh login (not on page reload)
+  const [showWelcome, setShowWelcome] = useState(false);
 
   // Time tracking
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -108,18 +131,21 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  // Check Auth State and filter only allowed email keywords
+  // Check Auth State and register user in Firestore on login
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const emailLower = firebaseUser.email?.toLowerCase() || "";
-        const isAllowed = emailLower.includes("domi") || emailLower.includes("juliana") || emailLower.includes("papa");
-        if (isAllowed) {
-          setUser(firebaseUser);
-        } else {
-          await signOut(auth);
-          setUser(null);
-          setAuthError("Acceso denegado: Tu cuenta de Google no está autorizada.");
+        setUser(firebaseUser);
+        try {
+          await setDoc(doc(db, "users", firebaseUser.uid), {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName || firebaseUser.email,
+            photoURL: firebaseUser.photoURL || null,
+            lastLogin: new Date().toISOString()
+          }, { merge: true });
+        } catch (err) {
+          console.error("Error registering user:", err);
         }
       } else {
         setUser(null);
@@ -187,18 +213,38 @@ export default function App() {
     return unsubscribe;
   }, [user]);
 
+  // Listen to registered users from Firestore
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = onSnapshot(collection(db, "users"), (snapshot) => {
+      const usersData = [];
+      snapshot.forEach((doc) => usersData.push(doc.data()));
+      setRegisteredUsers(usersData);
+    });
+    return unsubscribe;
+  }, [user]);
+
+  // Scroll selected date button into view whenever it changes
+  useEffect(() => {
+    selectedDateRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [selectedDate]);
+
+  // Auto-poll ESPN every 60s when there are locked matches
+  const lockedMatchIds = matches.filter(m => currentTime >= m.kickoff).map(m => m.id).join(",");
+  useEffect(() => {
+    if (!user || !lockedMatchIds) return;
+    fetchAllLiveScores();
+    const interval = setInterval(fetchAllLiveScores, 60_000);
+    return () => clearInterval(interval);
+  }, [user, lockedMatchIds]); // re-runs only when a new match becomes locked
+
   // Handle Google Login
   const handleGoogleLogin = async () => {
     setAuthError("");
     const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(auth, provider);
-      const emailLower = result.user.email?.toLowerCase() || "";
-      const isAllowed = emailLower.includes("domi") || emailLower.includes("juliana") || emailLower.includes("papa");
-      if (!isAllowed) {
-        await signOut(auth);
-        setAuthError("Acceso denegado: Tu cuenta de Google no está autorizada.");
-      }
+      await signInWithPopup(auth, provider);
+      if (isInviteMode) setShowWelcome(true);
     } catch (err) {
       console.error(err);
       if (err.code !== "auth/popup-closed-by-user") {
@@ -216,17 +262,11 @@ export default function App() {
     }
   };
 
-  // Profile resolution for user email
+  // Profile resolution from Firebase user
   const getUserProfile = (firebaseUser) => {
     if (!firebaseUser) return { name: "Invitado", avatar: "?", photoURL: null };
-    const email = firebaseUser.email || "";
-    const prefix = email.split("@")[0].toLowerCase();
-    const matched = Object.keys(USER_PROFILES).find(key => prefix.includes(key));
-    const profile = USER_PROFILES[matched] || { name: firebaseUser.displayName || email, avatar: email.substring(0,2).toUpperCase() };
-    return {
-      ...profile,
-      photoURL: firebaseUser.photoURL
-    };
+    const name = firebaseUser.displayName || firebaseUser.email || "Usuario";
+    return { name, avatar: getInitials(name), photoURL: firebaseUser.photoURL };
   };
 
   const currentUserProfile = getUserProfile(user);
@@ -274,61 +314,21 @@ export default function App() {
     }, 1000);
   };
 
-  // Save official score by any user
-  const saveOfficialScore = async (matchId, team, value) => {
-    const existing = officialResults[matchId] || { matchId, homeScore: "", awayScore: "", updatedBy: user.email };
-    const parsedVal = value === "" ? "" : parseInt(value, 10);
-    const updated = {
-      ...existing,
-      homeScore: team === "home" ? parsedVal : existing.homeScore,
-      awayScore: team === "away" ? parsedVal : existing.awayScore,
-      updatedBy: user.email
-    };
-
-    setOfficialResults(prev => ({
-      ...prev,
-      [matchId]: updated
-    }));
-
-    try {
-      await setDoc(doc(db, "official_results", matchId), updated);
-    } catch (err) {
-      console.error("Error saving official score: ", err);
-    }
-  };
-
-  // Save both official scores atomically (used by ESPN "Usar" button)
-  const saveBothOfficialScores = async (matchId, homeScore, awayScore) => {
-    const updated = {
-      matchId,
-      homeScore: homeScore === "" ? "" : parseInt(homeScore, 10),
-      awayScore: awayScore === "" ? "" : parseInt(awayScore, 10),
-      updatedBy: user.email
-    };
-    setOfficialResults(prev => ({ ...prev, [matchId]: updated }));
-    try {
-      await setDoc(doc(db, "official_results", matchId), updated);
-    } catch (err) {
-      console.error("Error saving official score:", err);
-    }
-  };
-
-  // Fetch live scores from ESPN public API
-  const fetchLiveScores = async () => {
-    setIsFetchingLive(true);
+  // Fetch all live scores from ESPN and auto-save to Firestore
+  const fetchAllLiveScores = async () => {
     try {
       const res = await fetch("https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard");
       const data = await res.json();
       const events = data.events || [];
 
       const newLiveScores = {};
+      const writes = [];
+
       events.forEach(event => {
         const comp = event.competitions?.[0];
         if (!comp) return;
-
-        const competitors = comp.competitors || [];
-        const espnHome = competitors.find(c => c.homeAway === "home");
-        const espnAway = competitors.find(c => c.homeAway === "away");
+        const espnHome = comp.competitors?.find(c => c.homeAway === "home");
+        const espnAway = comp.competitors?.find(c => c.homeAway === "away");
         if (!espnHome || !espnAway) return;
 
         const localHome = ESPN_TO_LOCAL_TEAM[espnHome.team.displayName] || espnHome.team.displayName;
@@ -342,22 +342,34 @@ export default function App() {
 
         const flipped = matched.team1 === localAway;
         const status = comp.status;
+        const statusName = status?.type?.name || "";
 
-        newLiveScores[matched.id] = {
+        const liveData = {
           homeScore: flipped ? espnAway.score : espnHome.score,
           awayScore: flipped ? espnHome.score : espnAway.score,
-          statusName: status?.type?.name || "",
+          statusName,
           statusDesc: status?.type?.description || "",
           displayClock: status?.displayClock || "",
           period: status?.period || 0,
         };
+
+        newLiveScores[matched.id] = liveData;
+
+        const notScheduled = statusName !== "STATUS_SCHEDULED" && statusName !== "SCHEDULED";
+        if (notScheduled && liveData.homeScore !== "" && liveData.awayScore !== "") {
+          writes.push(setDoc(doc(db, "official_results", matched.id), {
+            matchId: matched.id,
+            homeScore: parseInt(liveData.homeScore, 10),
+            awayScore: parseInt(liveData.awayScore, 10),
+            updatedBy: "espn-auto"
+          }));
+        }
       });
 
-      setLiveScores(newLiveScores);
+      setLiveScores(prev => ({ ...prev, ...newLiveScores }));
+      await Promise.all(writes);
     } catch (err) {
-      console.error("Error fetching ESPN live scores:", err);
-    } finally {
-      setIsFetchingLive(false);
+      console.error("ESPN auto-fetch error:", err);
     }
   };
 
@@ -393,66 +405,40 @@ export default function App() {
     return points;
   };
 
-  // Calculate Leaderboard
+  // Calculate Leaderboard from registered users
   const getLeaderboard = () => {
-    const userKeys = ["domi", "juliana", "papa"];
-    const board = userKeys.map((key) => {
-      let email = "";
-      if (key === "domi") email = "domi@mundial.com"; // We keep these standardized emails for predictions keys matching in DB or we can adjust to match actual prefixes
-      if (key === "juliana") email = "juliana@mundial.com";
-      if (key === "papa") email = "papa@mundial.com";
+    return registeredUsers.map((u) => {
+      let totalPoints = 0, exactHits = 0, winnerHits = 0, predictedCount = 0;
 
-      // If they logged in with Google, their predictions are stored with their Google Email key!
-      // Let's resolve email key from prefix matching
-      const profile = USER_PROFILES[key];
-      
-      // Look for any prediction key matching this prefix
-      let totalPoints = 0;
-      let exactHits = 0;
-      let winnerHits = 0;
-      let goalsHits = 0;
-      let predictedCount = 0;
-
-      // We calculate from predictions matching this user's email prefix in predictions collection
       matches.forEach((m) => {
-        // Find if there is a prediction in database with userEmail containing key
-        const predictionEntry = Object.keys(predictions).find(k => k.startsWith(key) && k.endsWith(m.id));
-        const pred = predictionEntry ? predictions[predictionEntry] : null;
+        const pred = predictions[`${u.email}_${m.id}`];
         const real = officialResults[m.id];
-
         if (pred && pred.predictedHome !== "" && pred.predictedAway !== "") {
           predictedCount++;
           if (real && real.homeScore !== "" && real.awayScore !== "") {
-            const pHome = parseInt(pred.predictedHome, 10);
-            const pAway = parseInt(pred.predictedAway, 10);
-            const rHome = parseInt(real.homeScore, 10);
-            const rAway = parseInt(real.awayScore, 10);
-
-            const matchPoints = calculatePoints(pHome, pAway, rHome, rAway);
-            totalPoints += matchPoints;
-
-            if (pHome === rHome && pAway === rAway) exactHits++;
-            if (Math.sign(pHome - pAway) === Math.sign(rHome - rAway)) winnerHits++;
-            if (pHome === rHome) goalsHits++;
-            if (pAway === rAway) goalsHits++;
+            const pts = calculatePoints(pred.predictedHome, pred.predictedAway, real.homeScore, real.awayScore);
+            totalPoints += pts;
+            const pH = parseInt(pred.predictedHome, 10), pA = parseInt(pred.predictedAway, 10);
+            const rH = parseInt(real.homeScore, 10), rA = parseInt(real.awayScore, 10);
+            if (pH === rH && pA === rA) exactHits++;
+            if (Math.sign(pH - pA) === Math.sign(rH - rA)) winnerHits++;
           }
         }
       });
 
+      const name = u.displayName || u.email;
       return {
-        name: profile.name,
-        avatar: profile.avatar,
-        emailKey: key,
+        name,
+        avatar: getInitials(name),
+        photoURL: u.photoURL,
+        email: u.email,
+        uid: u.uid,
         totalPoints,
         exactHits,
         winnerHits,
-        goalsHits,
         predictedCount
       };
-    });
-
-    // Sort by points, then exact score hits, then winner/draw hits
-    return board.sort((a, b) => {
+    }).sort((a, b) => {
       if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
       if (b.exactHits !== a.exactHits) return b.exactHits - a.exactHits;
       return b.winnerHits - a.winnerHits;
@@ -461,41 +447,90 @@ export default function App() {
 
   const leaderboard = getLeaderboard();
 
-  // Flag icon CDN resolver
+  const getUserMatchBreakdown = (userEmail) => {
+    return matches
+      .filter(m => {
+        const pred = predictions[`${userEmail}_${m.id}`];
+        return pred && pred.predictedHome !== "" && pred.predictedAway !== "";
+      })
+      .map(m => {
+        const pred = predictions[`${userEmail}_${m.id}`];
+        const real = officialResults[m.id];
+        const hasReal = real && real.homeScore !== "" && real.homeScore !== undefined;
+        let pts = null, exactHit = false, winnerHit = false, homeGoal = false, awayGoal = false;
+        if (hasReal) {
+          const pH = parseInt(pred.predictedHome, 10), pA = parseInt(pred.predictedAway, 10);
+          const rH = parseInt(real.homeScore, 10), rA = parseInt(real.awayScore, 10);
+          exactHit = pH === rH && pA === rA;
+          winnerHit = Math.sign(pH - pA) === Math.sign(rH - rA);
+          homeGoal = pH === rH;
+          awayGoal = pA === rA;
+          pts = (exactHit ? 3 : 0) + (winnerHit ? 2 : 0) + (homeGoal ? 1 : 0) + (awayGoal ? 1 : 0);
+        }
+        return { m, pred, real, hasReal, pts, exactHit, winnerHit, homeGoal, awayGoal };
+      });
+  };
+
+  // Local flag assets (public/flags/)
+  const FLAG_CODES = {
+    "Algeria": "dz", "Argentina": "ar", "Australia": "au", "Austria": "at",
+    "Belgium": "be", "Bosnia & Herzegovina": "ba", "Brazil": "br", "Canada": "ca",
+    "Cape Verde": "cv", "Colombia": "co", "Croatia": "hr", "Curaçao": "cw",
+    "Czech Republic": "cz", "DR Congo": "cd", "Ecuador": "ec", "Egypt": "eg",
+    "England": "gb-eng", "France": "fr", "Germany": "de", "Ghana": "gh",
+    "Haiti": "ht", "Iran": "ir", "Iraq": "iq", "Ivory Coast": "ci",
+    "Japan": "jp", "Jordan": "jo", "Mexico": "mx", "Morocco": "ma",
+    "Netherlands": "nl", "New Zealand": "nz", "Norway": "no", "Panama": "pa",
+    "Paraguay": "py", "Portugal": "pt", "Qatar": "qa", "Saudi Arabia": "sa",
+    "Scotland": "gb-sct", "Senegal": "sn", "South Africa": "za", "South Korea": "kr",
+    "Spain": "es", "Sweden": "se", "Switzerland": "ch", "Tunisia": "tn",
+    "Turkey": "tr", "USA": "us", "Uruguay": "uy", "Uzbekistan": "uz",
+  };
+
   const getFlagUrl = (teamName) => {
-    const nameMap = {
-      "Mexico": "mx", "South Africa": "za", "South Korea": "kr", "Czech Republic": "cz",
-      "Canada": "ca", "Bosnia & Herzegovina": "ba", "Qatar": "qa", "Switzerland": "ch",
-      "Argentina": "ar", "Brazil": "br", "Colombia": "co", "France": "fr", "Germany": "de",
-      "Spain": "es", "England": "gb", "Italy": "it", "Portugal": "pt", "Uruguay": "uy",
-      "USA": "us", "Japan": "jp", "Morocco": "ma", "Croatia": "hr", "Belgium": "be",
-      "Netherlands": "nl", "Ecuador": "ec", "Senegal": "sn", "Wales": "gb-wls", "Iran": "ir",
-      "Poland": "pl", "Saudi Arabia": "sa", "Australia": "au", "Denmark": "dk", "Tunisia": "tn",
-      "Costa Rica": "cr"
-    };
-    const code = nameMap[teamName] || "un";
-    return `https://flagcdn.com/w80/${code.toLowerCase()}.png`;
+    const code = FLAG_CODES[teamName];
+    if (!code) return null;
+    return `${import.meta.env.BASE_URL}flags/${code}.png`;
   };
 
-  const getTeamAbbreviation = (teamName) => {
-    const abbrMap = {
-      "Mexico": "MEX", "South Africa": "SUD", "South Korea": "KOR", "Czech Republic": "CZE",
-      "Canada": "CAN", "Bosnia & Herzegovina": "BIH", "Qatar": "QAT", "Switzerland": "SUI",
-      "Argentina": "ARG", "Brazil": "BRA", "Colombia": "COL", "France": "FRA", "Germany": "GER",
-      "Spain": "ESP", "England": "ENG", "Italy": "ITA", "Portugal": "POR", "Uruguay": "URU"
-    };
-    return abbrMap[teamName] || teamName.substring(0, 3).toUpperCase();
+  const TEAM_ABBR = {
+    "Algeria": "ALG", "Argentina": "ARG", "Australia": "AUS", "Austria": "AUT",
+    "Belgium": "BEL", "Bosnia & Herzegovina": "BIH", "Brazil": "BRA", "Canada": "CAN",
+    "Cape Verde": "CPV", "Colombia": "COL", "Croatia": "CRO", "Curaçao": "CUW",
+    "Czech Republic": "CZE", "DR Congo": "COD", "Ecuador": "ECU", "Egypt": "EGY",
+    "England": "ENG", "France": "FRA", "Germany": "GER", "Ghana": "GHA",
+    "Haiti": "HAI", "Iran": "IRN", "Iraq": "IRQ", "Ivory Coast": "CIV",
+    "Japan": "JPN", "Jordan": "JOR", "Mexico": "MEX", "Morocco": "MAR",
+    "Netherlands": "NED", "New Zealand": "NZL", "Norway": "NOR", "Panama": "PAN",
+    "Paraguay": "PAR", "Portugal": "POR", "Qatar": "QAT", "Saudi Arabia": "KSA",
+    "Scotland": "SCO", "Senegal": "SEN", "South Africa": "RSA", "South Korea": "KOR",
+    "Spain": "ESP", "Sweden": "SWE", "Switzerland": "SUI", "Tunisia": "TUN",
+    "Turkey": "TUR", "USA": "USA", "Uruguay": "URU", "Uzbekistan": "UZB",
   };
 
-  const translateTeamToSpanish = (teamName) => {
-    const translationMap = {
-      "Mexico": "México", "South Africa": "Sudáfrica", "South Korea": "Corea del Sur", "Czech Republic": "República Checa",
-      "Canada": "Canadá", "Bosnia & Herzegovina": "Bosnia", "Qatar": "Catar", "Switzerland": "Suiza",
-      "Argentina": "Argentina", "Brazil": "Brasil", "Colombia": "Colombia", "France": "Francia",
-      "Germany": "Alemania", "Spain": "España", "England": "Inglaterra", "Italy": "Italia"
-    };
-    return translationMap[teamName] || teamName;
+  const getTeamAbbreviation = (teamName) =>
+    TEAM_ABBR[teamName] || teamName.substring(0, 3).toUpperCase();
+
+  const TEAM_ES = {
+    "Algeria": "Argelia", "Argentina": "Argentina", "Australia": "Australia",
+    "Austria": "Austria", "Belgium": "Bélgica", "Bosnia & Herzegovina": "Bosnia",
+    "Brazil": "Brasil", "Canada": "Canadá", "Cape Verde": "Cabo Verde",
+    "Colombia": "Colombia", "Croatia": "Croacia", "Curaçao": "Curazao",
+    "Czech Republic": "Rep. Checa", "DR Congo": "RD Congo", "Ecuador": "Ecuador",
+    "Egypt": "Egipto", "England": "Inglaterra", "France": "Francia",
+    "Germany": "Alemania", "Ghana": "Ghana", "Haiti": "Haití", "Iran": "Irán",
+    "Iraq": "Iraq", "Ivory Coast": "Costa de Marfil", "Japan": "Japón",
+    "Jordan": "Jordania", "Mexico": "México", "Morocco": "Marruecos",
+    "Netherlands": "Países Bajos", "New Zealand": "Nueva Zelanda", "Norway": "Noruega",
+    "Panama": "Panamá", "Paraguay": "Paraguay", "Portugal": "Portugal",
+    "Qatar": "Catar", "Saudi Arabia": "Arabia Saudita", "Scotland": "Escocia",
+    "Senegal": "Senegal", "South Africa": "Sudáfrica", "South Korea": "Corea del Sur",
+    "Spain": "España", "Sweden": "Suecia", "Switzerland": "Suiza",
+    "Tunisia": "Túnez", "Turkey": "Turquía", "USA": "EE.UU.", "Uruguay": "Uruguay",
+    "Uzbekistan": "Uzbekistán",
   };
+
+  const translateTeamToSpanish = (teamName) => TEAM_ES[teamName] || teamName;
 
   if (loading) {
     return (
@@ -507,22 +542,105 @@ export default function App() {
 
   // LOGIN SCREEN
   if (!user) {
+    const passphraseOk = passphrase === SANTO_Y_SENA;
     return (
       <div className="login-container">
         <div className="login-card">
+          {/* Header */}
           <div className="login-logo">
-            <Trophy className="logo-icon" />
+            <div className="login-trophy-wrap">
+              <Trophy className="logo-icon" />
+            </div>
             <h1 className="logo-text">RinconMundial</h1>
+            <p className="login-subtitle">Polla familiar · Mundial 2026</p>
           </div>
-          <h2 className="login-title" style={{ marginBottom: "36px" }}>Ingresar a la Polla Familiar</h2>
-          <button className="btn-primary" onClick={handleGoogleLogin}>
-            INICIAR SESIÓN CON GOOGLE
+
+          <div className="login-divider" />
+
+          <p className="login-invite-text">
+            Ingresa el santo y seña para unirte
+          </p>
+
+          {/* Passphrase input */}
+          <div className="input-group">
+            <div className="passphrase-input-wrap">
+              <svg className="passphrase-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              <input
+                className={`input-field passphrase-input${passphraseOk ? " passphrase-ok" : ""}`}
+                type="password"
+                placeholder="Ingresa el santo y seña"
+                value={passphrase}
+                onChange={(e) => setPassphrase(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && passphraseOk && handleGoogleLogin()}
+                autoComplete="off"
+              />
+              {passphraseOk && (
+                <svg className="passphrase-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              )}
+            </div>
+          </div>
+
+          {/* Google Sign-in button */}
+          <button
+            className={`btn-google${passphraseOk ? "" : " btn-google-disabled"}`}
+            onClick={handleGoogleLogin}
+            disabled={!passphraseOk}
+          >
+            <svg className="google-logo" viewBox="0 0 48 48">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+              <path fill="none" d="M0 0h48v48H0z"/>
+            </svg>
+            Continuar con Google
           </button>
+
           {authError && (
-            <div className="login-error" style={{ marginTop: "24px" }}>
+            <div className="login-error">
               {authError}
             </div>
           )}
+
+          <p className="login-footer-note">
+            Solo participantes de la familia Rincón
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // WELCOME SCREEN (after fresh login)
+  if (showWelcome) {
+    const profile = getUserProfile(user);
+    return (
+      <div className="login-container">
+        <div className="login-card welcome-card-screen">
+          <div className="welcome-confetti">🏆</div>
+          {profile.photoURL ? (
+            <img src={profile.photoURL} alt={profile.name} className="welcome-avatar" />
+          ) : (
+            <div className="welcome-avatar welcome-avatar-initials">{profile.avatar}</div>
+          )}
+          <h2 className="welcome-name">¡Bienvenido, {profile.name.split(" ")[0]}!</h2>
+          <p className="welcome-registered">Ya quedaste registrado en la polla familiar.</p>
+          <p className="welcome-hint">
+            Cuando todos ingresen, podrán empezar a hacer sus predicciones para el Mundial 2026.
+          </p>
+          <button
+            className="btn-primary"
+            onClick={() => {
+              setShowWelcome(false);
+              window.history.replaceState({}, "", window.location.pathname);
+            }}
+          >
+            Entrar al panel →
+          </button>
         </div>
       </div>
     );
@@ -565,6 +683,26 @@ export default function App() {
           </div>
         </div>
       </aside>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="mobile-nav">
+        <div className={`mobile-nav-item ${currentTab === "inicio" ? "active" : ""}`} onClick={() => setCurrentTab("inicio")}>
+          <Home size={22} />
+          <span>INICIO</span>
+        </div>
+        <div className={`mobile-nav-item ${currentTab === "predicciones" ? "active" : ""}`} onClick={() => setCurrentTab("predicciones")}>
+          <CheckSquare size={22} />
+          <span>PREDIC.</span>
+        </div>
+        <div className={`mobile-nav-item ${currentTab === "ranking" ? "active" : ""}`} onClick={() => setCurrentTab("ranking")}>
+          <Trophy size={22} />
+          <span>RANKING</span>
+        </div>
+        <div className="mobile-nav-item" onClick={handleLogout}>
+          <LogOut size={22} />
+          <span>SALIR</span>
+        </div>
+      </nav>
 
       {/* Main Panel */}
       <main className="main-content">
@@ -636,26 +774,14 @@ export default function App() {
                   {dates.map((d) => (
                     <button
                       key={d}
-                      className={`date-btn ${selectedDate === d ? "active" : ""}`}
+                      ref={selectedDate === d ? selectedDateRef : null}
+                      className={`date-btn ${selectedDate === d ? "active" : ""} ${d === todayStr && selectedDate !== d ? "today" : ""}`}
                       onClick={() => setSelectedDate(d)}
                     >
                       {formatDateToSpanish(d)}
+                      {d === todayStr && <span className="today-dot" />}
                     </button>
                   ))}
-                </div>
-                <div className="date-ribbon-actions">
-                  <button
-                    className="btn-secondary"
-                    onClick={fetchLiveScores}
-                    disabled={isFetchingLive}
-                    title="Consultar marcadores en vivo de ESPN"
-                  >
-                    <RefreshCw
-                      size={14}
-                      style={{ animation: isFetchingLive ? "spin 1s linear infinite" : "none" }}
-                    />
-                    {isFetchingLive ? "Actualizando..." : "Actualizar"}
-                  </button>
                 </div>
               </div>
 
@@ -676,6 +802,7 @@ export default function App() {
 
                     // Calculate countdown string
                     let countdownText = "";
+                    let isMatchLive = false;
                     if (!isLocked) {
                       const diffMs = m.kickoff.getTime() - currentTime.getTime();
                       const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
@@ -687,14 +814,18 @@ export default function App() {
                         countdownText = `CIERRA EN ${diffMins}m ${diffSecs}s`;
                       }
                     } else {
-                      countdownText = "CERRADO";
+                      const live = liveScores[m.id];
+                      isMatchLive = isLiveStatus(live);
+                      if (isMatchLive) countdownText = `EN VIVO · ${live.displayClock}`;
+                      else if (isFinalStatus(live)) countdownText = "FINALIZADO";
+                      else countdownText = "CERRADO";
                     }
 
                     return (
                       <div className={`match-card ${!isLocked ? "active-today" : ""}`} key={m.id}>
                         <div className="match-card-header">
                           <span className="match-group">{m.group}</span>
-                          <span className={`match-countdown ${isLocked ? "locked" : ""}`}>
+                          <span className={`match-countdown ${isMatchLive ? "live" : isLocked ? "locked" : ""}`}>
                             <Clock size={14} /> {countdownText}
                           </span>
                         </div>
@@ -704,13 +835,15 @@ export default function App() {
                           {/* Team Local */}
                           <div className="team-section">
                             <div className="team-flag-container">
-                              <img className="team-flag" src={getFlagUrl(m.team1)} alt={m.team1} onError={(e) => { e.target.style.display='none'; }} />
+                              <img className="team-flag" src={getFlagUrl(m.team1)} alt={m.team1} onError={(e) => { e.target.style.opacity='0'; }} />
                             </div>
                             <span className="team-name-abbr">{getTeamAbbreviation(m.team1)}</span>
                             <span className="team-name-full">{translateTeamToSpanish(m.team1)}</span>
                           </div>
 
                           {/* Prediction inputs */}
+                          <div className="scores-input-section">
+                          <span className="prediction-label">Tu predicción</span>
                           <div className="scores-input-area">
                             <input 
                               className="score-input"
@@ -734,11 +867,12 @@ export default function App() {
                               placeholder="-"
                             />
                           </div>
+                          </div>
 
                           {/* Team Visitor */}
                           <div className="team-section">
                             <div className="team-flag-container">
-                              <img className="team-flag" src={getFlagUrl(m.team2)} alt={m.team2} onError={(e) => { e.target.style.display='none'; }} />
+                              <img className="team-flag" src={getFlagUrl(m.team2)} alt={m.team2} onError={(e) => { e.target.style.opacity='0'; }} />
                             </div>
                             <span className="team-name-abbr">{getTeamAbbreviation(m.team2)}</span>
                             <span className="team-name-full">{translateTeamToSpanish(m.team2)}</span>
@@ -757,99 +891,105 @@ export default function App() {
                           )}
                         </div>
 
-                        {/* ESPN live score banner (only after match start, only when fetched) */}
-                        {isLocked && liveScores[m.id] && (() => {
+                        {/* Live score section: auto-updated from ESPN polling */}
+                        {isLocked && (() => {
                           const live = liveScores[m.id];
-                          const isInProgress = live.statusName === "IN_PROGRESS" || live.statusName === "STATUS_IN_PROGRESS";
-                          const isFinal = live.statusName === "STATUS_FINAL" || live.statusName === "FINAL" || live.statusDesc === "Final";
-                          return (
+                          const hasFirestore = realResult.homeScore !== "" && realResult.homeScore !== undefined;
+                          const isInProgress = isLiveStatus(live);
+                          const isFinal = isFinalStatus(live);
+
+                          if (live) return (
                             <div className="live-score-banner">
                               <div className="live-banner-left">
                                 {isInProgress && <span className="live-badge">EN VIVO</span>}
                                 {isFinal && <span className="final-badge">FINALIZADO</span>}
-                                {!isInProgress && !isFinal && (
-                                  <span className="final-badge">{live.statusDesc}</span>
-                                )}
-                                {isInProgress && (
-                                  <span className="live-minute">{live.displayClock}</span>
-                                )}
+                                {!isInProgress && !isFinal && <span className="final-badge">{live.statusDesc}</span>}
                               </div>
                               <div className="live-score-display">
                                 <span className="live-score-number">{live.homeScore}</span>
                                 <span className="live-score-dash">-</span>
                                 <span className="live-score-number">{live.awayScore}</span>
                               </div>
-                              {(isInProgress || isFinal) && (
-                                <button
-                                  className="btn-use-score"
-                                  onClick={() => saveBothOfficialScores(m.id, live.homeScore, live.awayScore)}
-                                >
-                                  Usar
-                                </button>
-                              )}
+                              <div className="live-minute-block">
+                                {isInProgress
+                                  ? <span className="live-minute">{live.displayClock}</span>
+                                  : <span className="live-minute-empty">—</span>
+                                }
+                              </div>
+                            </div>
+                          );
+
+                          if (hasFirestore) return (
+                            <div className="live-score-banner">
+                              <div className="live-banner-left">
+                                <span className="final-badge">GUARDADO</span>
+                              </div>
+                              <div className="live-score-display">
+                                <span className="live-score-number">{realResult.homeScore}</span>
+                                <span className="live-score-dash">-</span>
+                                <span className="live-score-number">{realResult.awayScore}</span>
+                              </div>
+                            </div>
+                          );
+
+                          return null;
+                        })()}
+
+                        {/* Own points badge when match has result */}
+                        {isLocked && (() => {
+                          const myPred = predictions[`${user.email}_${m.id}`];
+                          const myHasPred = myPred && myPred.predictedHome !== "" && myPred.predictedAway !== "";
+                          const hasResult = realResult.homeScore !== "" && realResult.homeScore !== undefined;
+                          if (!myHasPred || !hasResult) return null;
+                          const myPts = calculatePoints(myPred.predictedHome, myPred.predictedAway, realResult.homeScore, realResult.awayScore);
+                          const pH = parseInt(myPred.predictedHome, 10), pA = parseInt(myPred.predictedAway, 10);
+                          const rH = parseInt(realResult.homeScore, 10), rA = parseInt(realResult.awayScore, 10);
+                          const isExact = pH === rH && pA === rA;
+                          const isWinner = Math.sign(pH - pA) === Math.sign(rH - rA);
+                          const homeGoal = pH === rH;
+                          const awayGoal = pA === rA;
+                          return (
+                            <div className="own-points-row">
+                              <span className="own-points-label">Tu puntuación:</span>
+                              <div className="own-points-tags">
+                                {isExact && <span className="bp-tag bp-exact">+3 Exacto</span>}
+                                {isWinner && <span className="bp-tag bp-winner">+2 Ganador</span>}
+                                {!isExact && homeGoal && <span className="bp-tag bp-goal">+1 Local</span>}
+                                {!isExact && awayGoal && <span className="bp-tag bp-goal">+1 Visitante</span>}
+                                {myPts === 0 && <span className="bp-tag bp-zero">0 pts</span>}
+                                <span className="own-points-total">{myPts} PTS</span>
+                              </div>
                             </div>
                           );
                         })()}
 
-                        {/* Collaborative actual result entry (only after match start) */}
-                        {isLocked && (
-                          <div className="real-score-section">
-                            <span className="real-score-label">Marcador Real (Resultado Oficial)</span>
-                            <div className="real-score-inputs">
-                              <input 
-                                className="real-score-input"
-                                type="number"
-                                min="0"
-                                max="99"
-                                value={realResult.homeScore === undefined ? "" : realResult.homeScore}
-                                onChange={(e) => saveOfficialScore(m.id, "home", e.target.value)}
-                                placeholder="-"
-                              />
-                              <span style={{ fontWeight: "800", color: "#f59e0b" }}>-</span>
-                              <input 
-                                className="real-score-input"
-                                type="number"
-                                min="0"
-                                max="99"
-                                value={realResult.awayScore === undefined ? "" : realResult.awayScore}
-                                onChange={(e) => saveOfficialScore(m.id, "away", e.target.value)}
-                                placeholder="-"
-                              />
-                            </div>
-                          </div>
-                        )}
-
                         {/* Rival predictions (only visible when match is locked) */}
-                        {isLocked && (
+                        {isLocked && registeredUsers.filter(u => u.email !== user.email).length > 0 && (
                           <div className="rival-predictions-container">
                             <span className="rival-predictions-title">Predicciones Rivales</span>
-                            {["domi", "juliana", "papa"].map((rivalKey) => {
-                              // Match predictions where email starts with prefix
-                              const matchedEmailKey = Object.keys(predictions).find(k => k.startsWith(rivalKey) && k.endsWith(m.id));
-                              const rivalPred = matchedEmailKey ? predictions[matchedEmailKey] : null;
-
-                              if (matchedEmailKey && matchedEmailKey.split("_")[0] === user.email) return null; // Skip current user
-                              
-                              const rivalProfile = USER_PROFILES[rivalKey];
-                              const rivalHasPred = rivalPred && rivalPred.predictedHome !== "" && rivalPred.predictedAway !== "";
-                              const rPoints = rivalHasPred && realResult.homeScore !== "" && realResult.awayScore !== ""
-                                ? calculatePoints(rivalPred.predictedHome, rivalPred.predictedAway, realResult.homeScore, realResult.awayScore)
-                                : null;
-
-                              return (
-                                <div className="rival-row" key={rivalKey}>
-                                  <span className="rival-name">{rivalProfile.name}</span>
-                                  <div>
-                                    <span className="rival-score">
-                                      {rivalHasPred ? `${rivalPred.predictedHome} - ${rivalPred.predictedAway}` : "Sin pronóstico"}
-                                    </span>
-                                    {rPoints !== null && (
-                                      <span className="rival-points-badge">+{rPoints} PTS</span>
-                                    )}
+                            {registeredUsers
+                              .filter(ru => ru.email !== user.email)
+                              .map((ru) => {
+                                const rivalPred = predictions[`${ru.email}_${m.id}`];
+                                const rivalName = ru.displayName || ru.email;
+                                const rivalHasPred = rivalPred && rivalPred.predictedHome !== "" && rivalPred.predictedAway !== "";
+                                const rPoints = rivalHasPred && realResult.homeScore !== "" && realResult.awayScore !== ""
+                                  ? calculatePoints(rivalPred.predictedHome, rivalPred.predictedAway, realResult.homeScore, realResult.awayScore)
+                                  : null;
+                                return (
+                                  <div className="rival-row" key={ru.uid}>
+                                    <span className="rival-name">{rivalName}</span>
+                                    <div>
+                                      <span className="rival-score">
+                                        {rivalHasPred ? `${rivalPred.predictedHome} - ${rivalPred.predictedAway}` : "Sin pronóstico"}
+                                      </span>
+                                      {rPoints !== null && (
+                                        <span className="rival-points-badge">+{rPoints} PTS</span>
+                                      )}
+                                    </div>
                                   </div>
-                                </div>
-                              );
-                            })}
+                                );
+                              })}
                           </div>
                         )}
                       </div>
@@ -869,40 +1009,87 @@ export default function App() {
                     <tr>
                       <th>PUESTO</th>
                       <th>COMPETIDOR</th>
-                      <th style={{ textAlign: "center" }}>PRONÓSTICOS</th>
-                      <th style={{ textAlign: "center" }}>ACIERTO EXACTO (+3)</th>
-                      <th style={{ textAlign: "center" }}>ACIERTO GANADOR (+2)</th>
-                      <th style={{ textAlign: "center" }}>PUNTOS TOTALES</th>
+                      <th style={{ textAlign: "right" }}>PUNTOS</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {leaderboard.map((u, index) => (
-                      <tr className="ranking-row" key={u.emailKey}>
-                        <td className={`rank-position rank-position-${index+1}`}>
-                          #{index + 1}
-                        </td>
-                        <td>
-                          <div className="rank-user-cell">
-                            <div className="user-avatar" style={{ width: "36px", height: "36px", fontSize: "13px" }}>
-                              {u.avatar}
-                            </div>
-                            <span className="rank-user-name">{u.name}</span>
-                          </div>
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          {u.predictedCount}
-                        </td>
-                        <td style={{ textAlign: "center" }} style={{ color: "#fbbf24", fontWeight: "700" }}>
-                          {u.exactHits}
-                        </td>
-                        <td style={{ textAlign: "center" }} style={{ color: "#60efff", fontWeight: "700" }}>
-                          {u.winnerHits}
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          <span className="rank-score-total">{u.totalPoints} PTS</span>
-                        </td>
-                      </tr>
-                    ))}
+                    {leaderboard.map((u, index) => {
+                      const isExpanded = expandedRankingUser === u.email;
+                      const breakdown = isExpanded ? getUserMatchBreakdown(u.email) : [];
+                      return (
+                        <React.Fragment key={u.email}>
+                          <tr
+                            className={`ranking-row ranking-row-clickable${isExpanded ? " ranking-row-expanded" : ""}`}
+                            onClick={() => setExpandedRankingUser(isExpanded ? null : u.email)}
+                          >
+                            <td className={`rank-position rank-position-${index+1}`}>
+                              #{index + 1}
+                            </td>
+                            <td>
+                              <div className="rank-user-cell">
+                                {u.photoURL ? (
+                                  <img src={u.photoURL} alt={u.name} className="user-avatar" style={{ width: "36px", height: "36px", objectFit: "cover" }} />
+                                ) : (
+                                  <div className="user-avatar" style={{ width: "36px", height: "36px", fontSize: "13px" }}>{u.avatar}</div>
+                                )}
+                                <div className="rank-user-info">
+                                  <span className="rank-user-name">{u.name}</span>
+                                  <span className="rank-user-stats">
+                                    {u.exactHits > 0 && <span className="stat-exact">⬡ {u.exactHits} exactos</span>}
+                                    {u.winnerHits > 0 && <span className="stat-winner">◈ {u.winnerHits} ganador</span>}
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                            <td style={{ textAlign: "right" }}>
+                              <span className="rank-score-total">{u.totalPoints} PTS</span>
+                              <span className="rank-expand-hint">{isExpanded ? "▲" : "▼"}</span>
+                            </td>
+                          </tr>
+                          {isExpanded && (
+                            <tr className="ranking-breakdown-row">
+                              <td colSpan={3}>
+                                <div className="ranking-breakdown">
+                                  {breakdown.length === 0 ? (
+                                    <p className="breakdown-empty">Sin predicciones registradas.</p>
+                                  ) : (
+                                    breakdown.map(({ m, pred, hasReal, real, pts, exactHit, winnerHit, homeGoal, awayGoal }) => (
+                                      <div className="breakdown-match" key={m.id}>
+                                        <div className="breakdown-teams">
+                                          <span>{translateTeamToSpanish(m.team1)}</span>
+                                          <span className="breakdown-vs">vs</span>
+                                          <span>{translateTeamToSpanish(m.team2)}</span>
+                                        </div>
+                                        <div className="breakdown-scores">
+                                          <span className="breakdown-pred">{pred.predictedHome} - {pred.predictedAway}</span>
+                                          {hasReal && (
+                                            <>
+                                              <span className="breakdown-sep">→</span>
+                                              <span className="breakdown-real">{real.homeScore} - {real.awayScore}</span>
+                                            </>
+                                          )}
+                                        </div>
+                                        {hasReal ? (
+                                          <div className="breakdown-points">
+                                            {exactHit && <span className="bp-tag bp-exact">+3 Exacto</span>}
+                                            {winnerHit && <span className="bp-tag bp-winner">+2 Ganador</span>}
+                                            {!exactHit && homeGoal && <span className="bp-tag bp-goal">+1 Local</span>}
+                                            {!exactHit && awayGoal && <span className="bp-tag bp-goal">+1 Visitante</span>}
+                                            {pts === 0 && <span className="bp-tag bp-zero">0 pts</span>}
+                                          </div>
+                                        ) : (
+                                          <span className="breakdown-pending">Pendiente</span>
+                                        )}
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
