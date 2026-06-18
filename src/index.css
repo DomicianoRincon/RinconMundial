@@ -1038,19 +1038,47 @@ body {
   flex-wrap: wrap;
 }
 
-.breakdown-teams {
+.breakdown-date-group {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  min-width: 180px;
-  color: var(--text-primary);
+  flex-direction: column;
+  gap: 4px;
 }
 
-.breakdown-vs {
-  color: var(--text-muted);
+.breakdown-date-label {
   font-size: 11px;
+  font-weight: 800;
+  color: var(--neon-green);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 10px 14px 4px;
+}
+
+.breakdown-match-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 160px;
+  flex-shrink: 0;
+}
+
+.breakdown-abbrs {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.breakdown-live-badge {
+  font-size: 10px;
+  font-weight: 800;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  animation: pulse-live 2s ease-in-out infinite;
 }
 
 .breakdown-scores {
@@ -1075,6 +1103,10 @@ body {
 .breakdown-real {
   font-weight: 700;
   color: var(--neon-cyan);
+}
+
+.breakdown-real-live {
+  color: #ef4444;
 }
 
 .breakdown-points {
@@ -1291,6 +1323,8 @@ body {
   box-shadow: 0 0 24px rgba(0, 255, 135, 0.06), var(--glass-shadow);
   display: flex;
   flex-direction: column;
+  padding: 0;
+  gap: 0;
 }
 
 .final-card-meta {
@@ -1422,7 +1456,7 @@ body {
 /* Points footer */
 .final-pts-footer {
   background: linear-gradient(135deg, #00ff87 0%, #00e67a 100%);
-  padding: 20px 16px 16px;
+  padding: 20px 16px 18px;
   display: flex;
   flex-direction: column;
   align-items: center;

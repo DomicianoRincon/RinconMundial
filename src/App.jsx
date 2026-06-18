@@ -447,6 +447,8 @@ export default function App() {
 
   const leaderboard = getLeaderboard();
 
+  const MONTH_ABBR = ['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
   const getUserMatchBreakdown = (userEmail) => {
     return matches
       .filter(m => {
@@ -455,8 +457,22 @@ export default function App() {
       })
       .map(m => {
         const pred = predictions[`${userEmail}_${m.id}`];
-        const real = officialResults[m.id];
-        const hasReal = real && real.homeScore !== "" && real.homeScore !== undefined;
+        const firestoreResult = officialResults[m.id];
+        const live = liveScores[m.id];
+        const isLive = isLiveStatus(live);
+        const isFinalLive = isFinalStatus(live);
+
+        // Best available result: Firestore first, then ESPN live data
+        let real = null;
+        let hasReal = false;
+        if (firestoreResult && firestoreResult.homeScore !== "" && firestoreResult.homeScore !== undefined) {
+          real = firestoreResult;
+          hasReal = true;
+        } else if (live && (isLive || isFinalLive) && live.homeScore !== "" && live.homeScore !== undefined) {
+          real = { homeScore: live.homeScore, awayScore: live.awayScore };
+          hasReal = true;
+        }
+
         let pts = null, exactHit = false, winnerHit = false, homeGoal = false, awayGoal = false;
         if (hasReal) {
           const pH = parseInt(pred.predictedHome, 10), pA = parseInt(pred.predictedAway, 10);
@@ -467,8 +483,13 @@ export default function App() {
           awayGoal = pA === rA;
           pts = (exactHit ? 3 : 0) + (winnerHit ? 2 : 0) + (homeGoal ? 1 : 0) + (awayGoal ? 1 : 0);
         }
-        return { m, pred, real, hasReal, pts, exactHit, winnerHit, homeGoal, awayGoal };
-      });
+
+        const [, month, day] = m.date.split('-').map(Number);
+        const dateLabel = `${day} ${MONTH_ABBR[month]}`;
+
+        return { m, pred, real, hasReal, pts, exactHit, winnerHit, homeGoal, awayGoal, isLive, isFinalLive, live, dateLabel };
+      })
+      .sort((a, b) => b.m.kickoff - a.m.kickoff);
   };
 
   // Local flag assets (public/flags/)
@@ -893,17 +914,6 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Points footer */}
-                          {myHasPred && myPts !== null && (
-                            <div className={`final-pts-footer ${myPts === 0 ? "final-pts-footer-zero" : ""}`}>
-                              <span className="final-pts-number">+{myPts} PTS</span>
-                              <span className="final-pts-category">{ptsCat}</span>
-                              {breakdown.length > 0 && (
-                                <span className="final-pts-breakdown">({breakdown.join(", ")})</span>
-                              )}
-                            </div>
-                          )}
-
                           {/* Rival predictions */}
                           {registeredUsers.filter(ru => ru.email !== user.email).length > 0 && (
                             <div className="rival-predictions-container">
@@ -922,6 +932,17 @@ export default function App() {
                                   </div>
                                 );
                               })}
+                            </div>
+                          )}
+
+                          {/* Points footer — must be last child so it's flush with card bottom */}
+                          {myHasPred && myPts !== null && (
+                            <div className={`final-pts-footer ${myPts === 0 ? "final-pts-footer-zero" : ""}`}>
+                              <span className="final-pts-number">+{myPts} PTS</span>
+                              <span className="final-pts-category">{ptsCat}</span>
+                              {breakdown.length > 0 && (
+                                <span className="final-pts-breakdown">({breakdown.join(", ")})</span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1159,37 +1180,47 @@ export default function App() {
                                 <div className="ranking-breakdown">
                                   {breakdown.length === 0 ? (
                                     <p className="breakdown-empty">Sin predicciones registradas.</p>
-                                  ) : (
-                                    breakdown.map(({ m, pred, hasReal, real, pts, exactHit, winnerHit, homeGoal, awayGoal }) => (
-                                      <div className="breakdown-match" key={m.id}>
-                                        <div className="breakdown-teams">
-                                          <span>{translateTeamToSpanish(m.team1)}</span>
-                                          <span className="breakdown-vs">vs</span>
-                                          <span>{translateTeamToSpanish(m.team2)}</span>
-                                        </div>
-                                        <div className="breakdown-scores">
-                                          <span className="breakdown-pred">{pred.predictedHome} - {pred.predictedAway}</span>
-                                          {hasReal && (
-                                            <>
-                                              <span className="breakdown-sep">→</span>
-                                              <span className="breakdown-real">{real.homeScore} - {real.awayScore}</span>
-                                            </>
-                                          )}
-                                        </div>
-                                        {hasReal ? (
-                                          <div className="breakdown-points">
-                                            {exactHit && <span className="bp-tag bp-exact">+3 Exacto</span>}
-                                            {winnerHit && <span className="bp-tag bp-winner">+2 Ganador</span>}
-                                            {!exactHit && homeGoal && <span className="bp-tag bp-goal">+1 Local</span>}
-                                            {!exactHit && awayGoal && <span className="bp-tag bp-goal">+1 Visitante</span>}
-                                            {pts === 0 && <span className="bp-tag bp-zero">0 pts</span>}
+                                  ) : (() => {
+                                    // Group by date preserving newest-first order from breakdown
+                                    const groups = new Map();
+                                    breakdown.forEach(item => {
+                                      if (!groups.has(item.dateLabel)) groups.set(item.dateLabel, []);
+                                      groups.get(item.dateLabel).push(item);
+                                    });
+                                    return [...groups.entries()].map(([dateLabel, items]) => (
+                                      <div className="breakdown-date-group" key={dateLabel}>
+                                        <div className="breakdown-date-label">{dateLabel}</div>
+                                        {items.map(({ m, pred, hasReal, real, pts, exactHit, winnerHit, homeGoal, awayGoal, isLive, live }) => (
+                                          <div className="breakdown-match" key={m.id}>
+                                            <div className="breakdown-match-info">
+                                              <span className="breakdown-abbrs">{getTeamAbbreviation(m.team1)} vs {getTeamAbbreviation(m.team2)}</span>
+                                              {isLive && <span className="breakdown-live-badge">EN VIVO {live?.displayClock}</span>}
+                                            </div>
+                                            <div className="breakdown-scores">
+                                              <span className="breakdown-pred">{pred.predictedHome} - {pred.predictedAway}</span>
+                                              {hasReal && (
+                                                <>
+                                                  <span className="breakdown-sep">→</span>
+                                                  <span className={`breakdown-real${isLive ? " breakdown-real-live" : ""}`}>{real.homeScore} - {real.awayScore}</span>
+                                                </>
+                                              )}
+                                            </div>
+                                            {hasReal ? (
+                                              <div className="breakdown-points">
+                                                {exactHit && <span className="bp-tag bp-exact">+3 Exacto</span>}
+                                                {winnerHit && <span className="bp-tag bp-winner">+2 Ganador</span>}
+                                                {!exactHit && homeGoal && <span className="bp-tag bp-goal">+1 Local</span>}
+                                                {!exactHit && awayGoal && <span className="bp-tag bp-goal">+1 Visitante</span>}
+                                                {pts === 0 && <span className="bp-tag bp-zero">0 pts</span>}
+                                              </div>
+                                            ) : (
+                                              <span className="breakdown-pending">Pendiente</span>
+                                            )}
                                           </div>
-                                        ) : (
-                                          <span className="breakdown-pending">Pendiente</span>
-                                        )}
+                                        ))}
                                       </div>
-                                    ))
-                                  )}
+                                    ));
+                                  })()}
                                 </div>
                               </td>
                             </tr>

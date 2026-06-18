@@ -49,12 +49,12 @@
 
 | Partido | DOM | Father | Juliana |
 |---|:---:|:---:|:---:|
-| Francia vs Senegal | 3 - 1 | 2 - 1 | 3 - 1 ⚠️ |
-| Irak vs Noruega | 0 - 5 | 0 - 1 | 1 - 2 ⚠️ |
-| Argentina vs Argelia | 2 - 1 | 1 - 1 | 3 - 0 ⚠️ |
-| Austria vs Jordania | 2 - 1 | 3 - 0 | 4 - 2 ⚠️ |
+| Francia vs Senegal | 3 - 1 | 2 - 1 | X - X |
+| Irak vs Noruega | 0 - 5 | 0 - 1 | X - X |
+| Argentina vs Argelia | 2 - 1 | 1 - 1 | 3 - 0  |
+| Austria vs Jordania | 2 - 1 | 3 - 0 | 4 - 2  |
 
-> ⚠️ Las predicciones de Juliana para esta tanda fueron publicadas el 16/06 a las 5:28 PM, después de que los partidos terminaron. DOM acotó "Trampa".
+X significa que no puso resultado Juliana
 
 ---
 
@@ -73,12 +73,12 @@
 
 | Partido | DOM | Father | Juliana |
 |---|:---:|:---:|:---:|
-| Chequia vs Sudáfrica | 2 - 0 ⚠️ | 1 - 0 | 1 - 2 |
-| Suiza vs Bosnia | 2 - 1 ⚠️ | 1 - 2 | 1 - 1 |
-| Canadá vs Catar | 1 - 1 ⚠️ | 1 - 2 | 2 - 0 |
-| México vs Corea del Sur | 2 - 1 ⚠️ | 1 - 3 | 2 - 1 |
+| Chequia vs Sudáfrica | 2 - 0 | 1 - 0 | 1 - 2 |
+| Suiza vs Bosnia | 2 - 1 | 1 - 2 | 1 - 1 |
+| Canadá vs Catar | 1 - 1 | 1 - 2 | 2 - 0 |
+| México vs Corea del Sur | 2 - 1 | 1 - 3 | 2 - 1 |
 
-> ⚠️ Las predicciones de DOM para el 18/06 fueron publicadas a las 4:09 PM ("Es mi mismo marcador en el mismo formato"), posiblemente durante los partidos.
+
 
 ---
 
