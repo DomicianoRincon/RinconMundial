@@ -821,6 +821,113 @@ export default function App() {
                       else countdownText = "CERRADO";
                     }
 
+                    // --- FINALIZED CARD (new scoreboard style) ---
+                    const live = liveScores[m.id];
+                    const isInProgress = isLiveStatus(live);
+                    const hasResult = realResult.homeScore !== "" && realResult.homeScore !== undefined;
+                    const isFinalized = isLocked && hasResult && !isInProgress;
+
+                    if (isFinalized) {
+                      const myPred = predictions[`${user.email}_${m.id}`];
+                      const myHasPred = myPred && myPred.predictedHome !== "" && myPred.predictedAway !== "";
+                      const rH = parseInt(realResult.homeScore, 10);
+                      const rA = parseInt(realResult.awayScore, 10);
+                      let myPts = null, isExact = false, isWinner = false, homeGoal = false, awayGoal = false;
+                      if (myHasPred) {
+                        const pH = parseInt(myPred.predictedHome, 10);
+                        const pA = parseInt(myPred.predictedAway, 10);
+                        isExact  = pH === rH && pA === rA;
+                        isWinner = Math.sign(pH - pA) === Math.sign(rH - rA);
+                        homeGoal = pH === rH;
+                        awayGoal = pA === rA;
+                        myPts = calculatePoints(myPred.predictedHome, myPred.predictedAway, rH, rA);
+                      }
+                      const ptsCat = myPts === 7 ? "ACIERTO EXACTO" : myPts > 0 ? "ACIERTO PARCIAL" : "SIN PUNTOS";
+                      const breakdown = [];
+                      if (isExact)            breakdown.push("Exacto +3");
+                      if (isWinner)           breakdown.push("Resultado +2");
+                      if (!isExact && homeGoal) breakdown.push("Gol L +1");
+                      if (!isExact && awayGoal) breakdown.push("Gol V +1");
+                      const groupLabel = m.group ? m.group.replace("Group ", "GRUPO ") : "";
+
+                      return (
+                        <div className="match-card match-card-final" key={m.id}>
+                          {/* Meta */}
+                          <div className="final-card-meta">
+                            <span className="final-group-tag">{groupLabel}</span>
+                            <span className="final-venue-tag">{m.ground}</span>
+                          </div>
+
+                          <div className="final-status-label">[FINALIZADO]</div>
+
+                          {/* Teams + Scores */}
+                          <div className="final-card-body">
+                            <div className="final-team-col">
+                              <span className="final-abbr">{getTeamAbbreviation(m.team1)}</span>
+                              <div className="final-flag-wrap">
+                                <img className="team-flag" src={getFlagUrl(m.team1)} alt={m.team1} onError={(e) => { e.target.style.opacity='0'; }} />
+                              </div>
+                              <span className="final-team-name-label">{translateTeamToSpanish(m.team1).toUpperCase()}</span>
+                            </div>
+
+                            <div className="final-center-col">
+                              <div className="final-score-box">
+                                <span className="final-box-label">RESULTADO</span>
+                                <span className="final-box-score">{rH} - {rA}</span>
+                              </div>
+                              <div className="final-score-box final-pred-box">
+                                <span className="final-box-label">TU PRONÓSTICO</span>
+                                {myHasPred
+                                  ? <span className="final-box-score final-box-pred-score">{myPred.predictedHome} - {myPred.predictedAway}</span>
+                                  : <span className="final-box-no-pred">Sin pronóstico</span>
+                                }
+                              </div>
+                            </div>
+
+                            <div className="final-team-col">
+                              <span className="final-abbr">{getTeamAbbreviation(m.team2)}</span>
+                              <div className="final-flag-wrap">
+                                <img className="team-flag" src={getFlagUrl(m.team2)} alt={m.team2} onError={(e) => { e.target.style.opacity='0'; }} />
+                              </div>
+                              <span className="final-team-name-label">{translateTeamToSpanish(m.team2).toUpperCase()}</span>
+                            </div>
+                          </div>
+
+                          {/* Points footer */}
+                          {myHasPred && myPts !== null && (
+                            <div className={`final-pts-footer ${myPts === 0 ? "final-pts-footer-zero" : ""}`}>
+                              <span className="final-pts-number">+{myPts} PTS</span>
+                              <span className="final-pts-category">{ptsCat}</span>
+                              {breakdown.length > 0 && (
+                                <span className="final-pts-breakdown">({breakdown.join(", ")})</span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Rival predictions */}
+                          {registeredUsers.filter(ru => ru.email !== user.email).length > 0 && (
+                            <div className="rival-predictions-container">
+                              <span className="rival-predictions-title">Predicciones Rivales</span>
+                              {registeredUsers.filter(ru => ru.email !== user.email).map((ru) => {
+                                const rPred = predictions[`${ru.email}_${m.id}`];
+                                const rHasPred = rPred && rPred.predictedHome !== "" && rPred.predictedAway !== "";
+                                const rPts = rHasPred ? calculatePoints(rPred.predictedHome, rPred.predictedAway, rH, rA) : null;
+                                return (
+                                  <div className="rival-row" key={ru.uid}>
+                                    <span className="rival-name">{ru.displayName || ru.email}</span>
+                                    <div>
+                                      <span className="rival-score">{rHasPred ? `${rPred.predictedHome} - ${rPred.predictedAway}` : "Sin pronóstico"}</span>
+                                      {rPts !== null && <span className="rival-points-badge">+{rPts} PTS</span>}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
                     return (
                       <div className={`match-card ${!isLocked ? "active-today" : ""}`} key={m.id}>
                         <div className="match-card-header">
