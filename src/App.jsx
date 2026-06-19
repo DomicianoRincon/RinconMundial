@@ -1231,6 +1231,9 @@ export default function App() {
                             <span className="team-name-full">{translateTeamToSpanish(m.team1)}</span>
                           </div>
 
+                          {/* VS label — hidden on desktop, visible on mobile between teams */}
+                          <span className="teams-vs">VS</span>
+
                           {/* Prediction inputs */}
                           <div className="scores-input-section">
                           <span className="prediction-label">Tu predicción</span>
@@ -1478,20 +1481,40 @@ export default function App() {
                                         <div className="breakdown-date-label">{dateLabel}</div>
                                         {items.map(({ m, pred, hasReal, real, pts, exactHit, winnerHit, homeGoal, awayGoal, isLive, live }) => (
                                           <div className="breakdown-match" key={m.id}>
-                                            <div className="breakdown-match-info">
-                                              <span className="breakdown-abbrs">{getTeamAbbreviation(m.team1)} vs {getTeamAbbreviation(m.team2)}</span>
-                                              {isLive && <span className="breakdown-live-badge">EN VIVO {live?.displayClock}</span>}
+                                            {/* Teams row with flags */}
+                                            <div className="breakdown-teams">
+                                              <div className="breakdown-team">
+                                                <div className="breakdown-flag">
+                                                  <img src={getFlagUrl(m.team1)} alt={m.team1} onError={(e) => { e.target.style.opacity='0'; }} />
+                                                </div>
+                                                <span className="breakdown-team-name">{translateTeamToSpanish(m.team1).toUpperCase()}</span>
+                                              </div>
+                                              <div className="breakdown-vs-sep">
+                                                {isLive && <span className="breakdown-live-badge">EN VIVO {live?.displayClock}</span>}
+                                                {!isLive && <span className="breakdown-vs-label">VS</span>}
+                                              </div>
+                                              <div className="breakdown-team breakdown-team-right">
+                                                <div className="breakdown-flag">
+                                                  <img src={getFlagUrl(m.team2)} alt={m.team2} onError={(e) => { e.target.style.opacity='0'; }} />
+                                                </div>
+                                                <span className="breakdown-team-name">{translateTeamToSpanish(m.team2).toUpperCase()}</span>
+                                              </div>
                                             </div>
+                                            {/* Scores row: prediction → real */}
                                             <div className="breakdown-scores">
+                                              <span className="breakdown-scores-label">Pronóstico</span>
                                               <span className="breakdown-pred">{pred.predictedHome} - {pred.predictedAway}</span>
                                               {hasReal && (
                                                 <>
                                                   <span className="breakdown-sep">→</span>
+                                                  <span className="breakdown-scores-label">Real</span>
                                                   <span className={`breakdown-real${isLive ? " breakdown-real-live" : ""}`}>{real.homeScore} - {real.awayScore}</span>
                                                 </>
                                               )}
+                                              {!hasReal && <span className="breakdown-pending">Pendiente</span>}
                                             </div>
-                                            {hasReal ? (
+                                            {/* Points row */}
+                                            {hasReal && (
                                               <div className="breakdown-points">
                                                 {exactHit && <span className="bp-tag bp-exact">+3 Exacto</span>}
                                                 {winnerHit && <span className="bp-tag bp-winner">+2 Ganador</span>}
@@ -1499,8 +1522,6 @@ export default function App() {
                                                 {awayGoal && <span className="bp-tag bp-goal">+1 Visitante</span>}
                                                 {pts === 0 && <span className="bp-tag bp-zero">0 pts</span>}
                                               </div>
-                                            ) : (
-                                              <span className="breakdown-pending">Pendiente</span>
                                             )}
                                           </div>
                                         ))}

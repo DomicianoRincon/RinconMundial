@@ -693,6 +693,11 @@ body {
   padding: 10px 0;
 }
 
+/* Hidden on desktop, shown only on mobile via media query */
+.teams-vs {
+  display: none;
+}
+
 .team-section {
   display: flex;
   flex-direction: column;
@@ -1030,13 +1035,12 @@ body {
 
 .breakdown-match {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 14px;
   background: rgba(255,255,255,0.02);
   border: 1px solid var(--border-color);
   border-radius: 10px;
-  flex-wrap: wrap;
 }
 
 .breakdown-date-group {
@@ -1054,20 +1058,62 @@ body {
   padding: 10px 14px 4px;
 }
 
-.breakdown-match-info {
+/* Teams row with flags */
+.breakdown-teams {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 160px;
-  flex-shrink: 0;
 }
 
-.breakdown-abbrs {
-  font-size: 12px;
-  font-weight: 600;
+.breakdown-team {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+}
+
+.breakdown-team-right {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+
+.breakdown-flag {
+  width: 28px;
+  height: 20px;
+  border-radius: 3px;
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.breakdown-flag img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.breakdown-team-name {
+  font-size: 11px;
+  font-weight: 700;
   color: var(--text-secondary);
-  text-transform: uppercase;
   letter-spacing: 0.03em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 90px;
+}
+
+.breakdown-vs-sep {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.breakdown-vs-label {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--text-muted);
+  letter-spacing: 1px;
 }
 
 .breakdown-live-badge {
@@ -1082,11 +1128,20 @@ body {
   animation: pulse-live 2s ease-in-out infinite;
 }
 
+/* Scores row */
 .breakdown-scores {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 13px;
+}
+
+.breakdown-scores-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .breakdown-pred {
@@ -1110,16 +1165,15 @@ body {
   color: #ef4444;
 }
 
+/* Points row */
 .breakdown-points {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
   flex-wrap: wrap;
 }
 
 .breakdown-pending {
-  margin-left: auto;
   font-size: 11px;
   color: var(--text-muted);
   font-style: italic;
@@ -1980,7 +2034,8 @@ body {
 
   /* Match card */
   .match-card {
-    padding: 14px;
+    padding: 14px 14px 10px;
+    gap: 10px;
   }
 
   /* Two-class selector beats .match-card alone — keeps final card flush */
@@ -1988,23 +2043,80 @@ body {
     padding: 0;
   }
 
-  .team-name-abbr {
-    font-size: 20px;
+  /* ── Mobile-first prediction card layout ─────────────── */
+
+  /* VS label: hidden on desktop, shown on mobile between teams */
+  .teams-vs {
+    display: flex;
+    order: 2;
+    align-self: center;
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    padding: 0 4px;
   }
 
+  /* Card body: teams + VS on top row, inputs on bottom row */
+  .match-card-body {
+    flex-wrap: wrap;
+    padding: 0;
+    gap: 0;
+    row-gap: 12px;
+    align-items: flex-start;
+  }
+
+  /* Left team: column layout, centered — placed first */
+  .match-card-body .team-section:nth-child(1) {
+    order: 1;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* Right team: column layout, centered — placed third (after VS) */
+  .match-card-body .team-section:nth-child(4) {
+    order: 3;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* Inputs section: full width on second row */
+  .match-card-body .scores-input-section {
+    order: 4;
+    flex: 0 0 100%;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding-top: 12px;
+  }
+
+  /* Flags */
   .team-flag-container {
-    width: 56px;
-    height: 42px;
+    width: 52px;
+    height: 38px;
+    border-radius: 8px;
   }
 
+  /* Abbreviation */
+  .team-name-abbr {
+    font-size: 18px;
+  }
+
+  /* Full name */
+  .team-name-full {
+    font-size: 9px;
+    max-width: 80px;
+  }
+
+  /* Score inputs */
   .score-input {
     width: 50px;
-    height: 58px;
-    font-size: 34px;
+    height: 54px;
+    font-size: 32px;
   }
 
   .score-input:disabled {
-    font-size: 28px;
+    font-size: 26px;
   }
 
   .live-score-number {
