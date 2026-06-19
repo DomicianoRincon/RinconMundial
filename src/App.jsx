@@ -964,11 +964,11 @@ export default function App() {
 
       {/* Mobile Drawer Panel */}
       <nav className={`drawer-panel${drawerOpen ? " drawer-open" : ""}`}>
-        <div className="drawer-header">
+        <div className="drawer-header" style={{ position: "relative", justifyContent: "center" }}>
           <div className="logo-container" style={{ padding: 0, paddingBottom: 0, justifyContent: "center" }}>
             <img src={worldcupLogo} alt="RinconMundial" style={{ width: 72, height: 72, objectFit: "contain" }} />
           </div>
-          <button className="drawer-close-btn" onClick={() => setDrawerOpen(false)}>
+          <button className="drawer-close-btn" style={{ position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)" }} onClick={() => setDrawerOpen(false)}>
             <X size={22} />
           </button>
         </div>
