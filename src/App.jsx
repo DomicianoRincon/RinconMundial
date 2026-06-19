@@ -101,8 +101,9 @@ export default function App() {
   // Today's date in GMT-5 (Bogota)
   const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
 
-  // Ref for auto-scrolling the active date button into view
+  // Refs for auto-scrolling the active date button into view
   const selectedDateRef = useRef(null);
+  const datesScrollRef = useRef(null);
 
   // Matches schedules and formatting
   const [matches, setMatches] = useState([]);
@@ -233,9 +234,19 @@ export default function App() {
     return unsubscribe;
   }, [user]);
 
-  // Scroll selected date button into view whenever it changes
+  // Scroll active date button to center of ribbon
   useEffect(() => {
-    selectedDateRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    const container = datesScrollRef.current;
+    const btn = selectedDateRef.current;
+    if (!container || !btn) return;
+    // Use rAF to ensure layout is complete before reading dimensions
+    const frame = requestAnimationFrame(() => {
+      const containerWidth = container.offsetWidth;
+      const btnLeft = btn.offsetLeft;
+      const btnWidth = btn.offsetWidth;
+      container.scrollTo({ left: btnLeft - containerWidth / 2 + btnWidth / 2, behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [selectedDate]);
 
   // One-shot fetch when user enters the app (matches already loaded)
@@ -576,175 +587,216 @@ export default function App() {
   const translateTeamToSpanish = (teamName) => TEAM_ES[teamName] || teamName;
 
   // ── Share image ────────────────────────────────────────
-  const generateShareImage = () => {
-    return new Promise((resolve) => {
-      const W = 900;
-      const PADDING = 36;
-      const HEADER_H = 96;
-      const SEP = 20;
-      const MATCH_H = 70;
-      const FOOTER_H = 80;
+  const generateShareImage = async () => {
+    const W = 900;
+    const PADDING = 36;
+    const HEADER_H = 96;
+    const SEP = 10;
+    const ROW_H = 96;
+    const FOOTER_H = 84;
+    const FLAG_W = 56;
+    const FLAG_H = 40;
+    const FLAG_R = 7;
 
-      const dayMatches = matches.filter(m => m.date === selectedDate);
-      const rows = dayMatches.map(m => {
-        const real = officialResults[m.id];
-        const pred = predictions[`${user.email}_${m.id}`];
-        const hasReal = real && real.homeScore !== "" && real.homeScore !== undefined;
-        const hasPred = pred && pred.predictedHome !== "" && pred.predictedAway !== "";
-        const pts = (hasReal && hasPred)
-          ? calculatePoints(pred.predictedHome, pred.predictedAway, real.homeScore, real.awayScore)
-          : null;
-        return { m, real, pred, hasReal, hasPred, pts };
-      });
-
-      const totalDayPts = rows.reduce((acc, r) => acc + (r.pts ?? 0), 0);
-      const H = HEADER_H + SEP + rows.length * MATCH_H + SEP + FOOTER_H;
-
-      const canvas = document.createElement('canvas');
-      canvas.width = W * 2;
-      canvas.height = H * 2;
-      const ctx = canvas.getContext('2d');
-      ctx.scale(2, 2);
-
-      // Background
-      ctx.fillStyle = '#0d1117';
-      ctx.fillRect(0, 0, W, H);
-
-      // Outer border with rounded corners
-      const drawRoundRect = (x, y, w, h, r) => {
-        ctx.beginPath();
-        ctx.moveTo(x + r, y);
-        ctx.lineTo(x + w - r, y);
-        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-        ctx.lineTo(x + w, y + h - r);
-        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-        ctx.lineTo(x + r, y + h);
-        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-        ctx.lineTo(x, y + r);
-        ctx.quadraticCurveTo(x, y, x + r, y);
-        ctx.closePath();
-      };
-      ctx.strokeStyle = 'rgba(0, 255, 135, 0.35)';
-      ctx.lineWidth = 2;
-      drawRoundRect(3, 3, W - 6, H - 6, 18);
-      ctx.stroke();
-
-      // ── Header ─────────────────────────────────────────
-      // Brand
-      ctx.fillStyle = '#00ff87';
-      ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillText('RINCONMUNDIAL', PADDING, 40);
-
-      // Date
-      ctx.fillStyle = '#9ca3af';
-      ctx.font = '13px system-ui, -apple-system, sans-serif';
-      ctx.fillText(formatDateToSpanish(selectedDate).toUpperCase(), PADDING, 62);
-
-      // User name (right side)
-      const shortName = currentUserProfile.name.split(' ')[0].toUpperCase();
-      ctx.fillStyle = '#e5e7eb';
-      ctx.font = 'bold 15px system-ui, -apple-system, sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(shortName, W - PADDING, 40);
-      ctx.fillStyle = '#6b7280';
-      ctx.font = '12px system-ui, -apple-system, sans-serif';
-      ctx.fillText('MIS PREDICCIONES', W - PADDING, 60);
-
-      // Divider
-      ctx.strokeStyle = 'rgba(0, 255, 135, 0.2)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(PADDING, HEADER_H - 4);
-      ctx.lineTo(W - PADDING, HEADER_H - 4);
-      ctx.stroke();
-
-      // ── Match rows ─────────────────────────────────────
-      rows.forEach(({ m, real, pred, hasReal, hasPred, pts }, idx) => {
-        const y = HEADER_H + SEP + idx * MATCH_H;
-        const midY = y + MATCH_H / 2;
-
-        // Subtle zebra stripe
-        if (idx % 2 === 0) {
-          ctx.fillStyle = 'rgba(255,255,255,0.025)';
-          ctx.fillRect(PADDING - 8, y + 2, W - (PADDING - 8) * 2, MATCH_H - 4);
-        }
-
-        // Team1
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(getTeamAbbreviation(m.team1), PADDING, midY - 6);
-        ctx.fillStyle = '#6b7280';
-        ctx.font = '10px system-ui, -apple-system, sans-serif';
-        ctx.fillText(translateTeamToSpanish(m.team1).toUpperCase().substring(0, 12), PADDING, midY + 12);
-
-        // Score center
-        const scoreText = hasReal ? `${real.homeScore}  —  ${real.awayScore}` : 'vs';
-        ctx.fillStyle = hasReal ? '#ffffff' : '#4b5563';
-        ctx.font = hasReal ? 'bold 22px system-ui, -apple-system, sans-serif' : '16px system-ui, -apple-system, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(scoreText, W / 2, midY - 4);
-
-        // Prediction below score
-        if (hasPred) {
-          ctx.fillStyle = '#9ca3af';
-          ctx.font = '11px system-ui, -apple-system, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(`Pred: ${pred.predictedHome} - ${pred.predictedAway}`, W / 2, midY + 14);
-        }
-
-        // Team2 (right)
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
-        ctx.textAlign = 'right';
-        ctx.fillText(getTeamAbbreviation(m.team2), W - PADDING, midY - 6);
-        ctx.fillStyle = '#6b7280';
-        ctx.font = '10px system-ui, -apple-system, sans-serif';
-        ctx.fillText(translateTeamToSpanish(m.team2).toUpperCase().substring(0, 12), W - PADDING, midY + 12);
-
-        // Points badge
-        if (pts !== null) {
-          const ptsLabel = `+${pts} PTS`;
-          const ptsColor = pts === 0 ? '#4b5563' : pts >= 5 ? '#fbbf24' : '#00ff87';
-          ctx.fillStyle = ptsColor;
-          ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
-          ctx.textAlign = 'center';
-          // small pill background
-          const labelW = ctx.measureText(ptsLabel).width + 14;
-          ctx.fillStyle = pts === 0 ? 'rgba(75,85,99,0.25)' : pts >= 5 ? 'rgba(251,191,36,0.15)' : 'rgba(0,255,135,0.12)';
-          const pillX = W / 2 - labelW / 2;
-          drawRoundRect(pillX, midY + 20, labelW, 18, 4);
-          ctx.fill();
-          ctx.fillStyle = ptsColor;
-          ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(ptsLabel, W / 2, midY + 33);
-        }
-      });
-
-      // Bottom divider
-      const divY = HEADER_H + SEP + rows.length * MATCH_H + 8;
-      ctx.strokeStyle = 'rgba(0, 255, 135, 0.2)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(PADDING, divY);
-      ctx.lineTo(W - PADDING, divY);
-      ctx.stroke();
-
-      // ── Footer ─────────────────────────────────────────
-      const footerMidY = divY + FOOTER_H / 2;
-      const ptsColor = totalDayPts === 0 ? '#6b7280' : totalDayPts >= 10 ? '#fbbf24' : '#00ff87';
-      ctx.fillStyle = ptsColor;
-      ctx.font = 'bold 32px system-ui, -apple-system, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`+${totalDayPts} PTS`, W / 2, footerMidY + 6);
-      ctx.fillStyle = '#6b7280';
-      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-      ctx.fillText('TOTAL DEL DÍA', W / 2, footerMidY + 26);
-
-      canvas.toBlob(resolve, 'image/png');
+    const dayMatches = matches.filter(m => m.date === selectedDate);
+    const rows = dayMatches.map(m => {
+      const real = officialResults[m.id];
+      const pred = predictions[`${user.email}_${m.id}`];
+      const hasReal = real && real.homeScore !== "" && real.homeScore !== undefined;
+      const hasPred = pred && pred.predictedHome !== "" && pred.predictedAway !== "";
+      const pts = (hasReal && hasPred)
+        ? calculatePoints(pred.predictedHome, pred.predictedAway, real.homeScore, real.awayScore)
+        : null;
+      return { m, real, pred, hasReal, hasPred, pts };
     });
+
+    const totalDayPts = rows.reduce((acc, r) => acc + (r.pts ?? 0), 0);
+
+    // Pre-load all flag images
+    const loadImg = url => new Promise(res => {
+      if (!url) return res(null);
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = () => res(null);
+      img.src = url;
+    });
+    const uniqueTeams = [...new Set(dayMatches.flatMap(m => [m.team1, m.team2]))];
+    const flagImgs = Object.fromEntries(
+      await Promise.all(uniqueTeams.map(async t => [t, await loadImg(getFlagUrl(t))]))
+    );
+
+    const H = HEADER_H + SEP + rows.length * ROW_H + SEP + FOOTER_H;
+    const canvas = document.createElement('canvas');
+    canvas.width = W * 2;
+    canvas.height = H * 2;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(2, 2);
+
+    // ── Helpers ──────────────────────────────────────────
+    const rrPath = (x, y, w, h, r) => {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+    };
+
+    const drawFlag = (img, x, y) => {
+      ctx.save();
+      rrPath(x, y, FLAG_W, FLAG_H, FLAG_R);
+      ctx.clip();
+      if (img) {
+        ctx.drawImage(img, x, y, FLAG_W, FLAG_H);
+      } else {
+        ctx.fillStyle = '#1f2937';
+        ctx.fill();
+      }
+      ctx.restore();
+      ctx.save();
+      rrPath(x, y, FLAG_W, FLAG_H, FLAG_R);
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    const truncate = (text, maxW) => {
+      if (ctx.measureText(text).width <= maxW) return text;
+      let t = text;
+      while (t.length > 0 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+      return t + '…';
+    };
+
+    // ── Background ───────────────────────────────────────
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, W, H);
+
+    // Outer border
+    ctx.strokeStyle = 'rgba(0, 255, 135, 0.35)';
+    ctx.lineWidth = 2;
+    rrPath(3, 3, W - 6, H - 6, 18);
+    ctx.stroke();
+
+    // ── Header ───────────────────────────────────────────
+    ctx.fillStyle = '#00ff87';
+    ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('RINCONMUNDIAL', PADDING, 40);
+
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '13px system-ui, -apple-system, sans-serif';
+    ctx.fillText(formatDateToSpanish(selectedDate).toUpperCase(), PADDING, 64);
+
+    const shortName = currentUserProfile.name.split(' ')[0].toUpperCase();
+    ctx.fillStyle = '#e5e7eb';
+    ctx.font = 'bold 15px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(shortName, W - PADDING, 40);
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '12px system-ui, -apple-system, sans-serif';
+    ctx.fillText('MIS PREDICCIONES', W - PADDING, 62);
+
+    ctx.strokeStyle = 'rgba(0, 255, 135, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PADDING, HEADER_H - 2);
+    ctx.lineTo(W - PADDING, HEADER_H - 2);
+    ctx.stroke();
+
+    // ── Match rows ───────────────────────────────────────
+    // Column centers: flags align to outer edges, names centered under flags
+    const LEFT_FLAG_X = PADDING;                       // left flag left edge
+    const RIGHT_FLAG_X = W - PADDING - FLAG_W;        // right flag left edge
+    const LEFT_CENTER = LEFT_FLAG_X + FLAG_W / 2;     // x center of left flag/name
+    const RIGHT_CENTER = RIGHT_FLAG_X + FLAG_W / 2;   // x center of right flag/name
+    const NAME_MAX_W = (W / 2) - LEFT_CENTER - 16;    // max name width before center zone
+
+    rows.forEach(({ m, real, pred, hasReal, hasPred, pts }, idx) => {
+      const rowY = HEADER_H + SEP + idx * ROW_H;
+      const flagY = rowY + (ROW_H - FLAG_H - 20) / 2; // flag vertical center (leaving room for name)
+      const nameY = flagY + FLAG_H + 14;               // name baseline below flag
+
+      // Zebra stripe
+      if (idx % 2 === 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.025)';
+        ctx.fillRect(PADDING - 8, rowY + 2, W - (PADDING - 8) * 2, ROW_H - 4);
+      }
+
+      // Left flag + name
+      drawFlag(flagImgs[m.team1], LEFT_FLAG_X, flagY);
+      ctx.fillStyle = '#d1d5db';
+      ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(truncate(translateTeamToSpanish(m.team1).toUpperCase(), NAME_MAX_W * 2), LEFT_CENTER, nameY);
+
+      // Right flag + name
+      drawFlag(flagImgs[m.team2], RIGHT_FLAG_X, flagY);
+      ctx.fillStyle = '#d1d5db';
+      ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(truncate(translateTeamToSpanish(m.team2).toUpperCase(), NAME_MAX_W * 2), RIGHT_CENTER, nameY);
+
+      // Center: score
+      const scoreCenterY = flagY + FLAG_H / 2 + 2;
+      const scoreText = hasReal ? `${real.homeScore}  —  ${real.awayScore}` : 'vs';
+      ctx.fillStyle = hasReal ? '#ffffff' : '#4b5563';
+      ctx.font = hasReal ? 'bold 26px system-ui, -apple-system, sans-serif' : '16px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(scoreText, W / 2, scoreCenterY);
+
+      // Center: prediction
+      if (hasPred) {
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '12px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`Pred: ${pred.predictedHome} - ${pred.predictedAway}`, W / 2, nameY - 2);
+      }
+
+      // Center: points pill
+      if (pts !== null) {
+        const ptsLabel = `+${pts} PTS`;
+        const ptsColor = pts === 0 ? '#6b7280' : pts >= 5 ? '#fbbf24' : '#00ff87';
+        const pillBg = pts === 0 ? 'rgba(107,114,128,0.2)' : pts >= 5 ? 'rgba(251,191,36,0.15)' : 'rgba(0,255,135,0.14)';
+        ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
+        const pillW = ctx.measureText(ptsLabel).width + 16;
+        const pillH = 20;
+        const pillX = W / 2 - pillW / 2;
+        const pillY = nameY + 4;
+        ctx.fillStyle = pillBg;
+        rrPath(pillX, pillY, pillW, pillH, 5);
+        ctx.fill();
+        ctx.fillStyle = ptsColor;
+        ctx.textAlign = 'center';
+        ctx.fillText(ptsLabel, W / 2, pillY + 14);
+      }
+    });
+
+    // ── Footer ───────────────────────────────────────────
+    const divY = HEADER_H + SEP + rows.length * ROW_H + 6;
+    ctx.strokeStyle = 'rgba(0, 255, 135, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(PADDING, divY);
+    ctx.lineTo(W - PADDING, divY);
+    ctx.stroke();
+
+    const footerMid = divY + FOOTER_H / 2;
+    const totalColor = totalDayPts === 0 ? '#6b7280' : totalDayPts >= 10 ? '#fbbf24' : '#00ff87';
+    ctx.fillStyle = totalColor;
+    ctx.font = 'bold 34px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`+${totalDayPts} PTS`, W / 2, footerMid + 8);
+    ctx.fillStyle = '#6b7280';
+    ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+    ctx.fillText('TOTAL DEL DÍA', W / 2, footerMid + 28);
+
+    return new Promise(res => canvas.toBlob(res, 'image/png'));
   };
 
   const handleShare = async () => {
@@ -1041,7 +1093,7 @@ export default function App() {
             <>
               {/* Date Selection Ribbon */}
               <div className="date-selector-ribbon">
-                <div className="dates-scroll-container">
+                <div className="dates-scroll-container" ref={datesScrollRef}>
                   {dates.map((d) => (
                     <button
                       key={d}
