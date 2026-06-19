@@ -610,17 +610,19 @@ export default function App() {
 
   // ── Share image ────────────────────────────────────────
   const generateShareImage = async () => {
-    const W = 900;
-    const PADDING = 36;
-    const HEADER_H = 90;
-    const SEP = 8;
-    const ROW_H = 88;
-    const FOOTER_H = 44;
-    const FLAG_W = 56;
-    const FLAG_H = 40;
-    const FLAG_R = 7;
+    const W = 480;
+    const PADDING = 20;
+    const HEADER_H = 80;
+    const SEP = 6;
+    const ROW_H = 92;
+    const FOOTER_H = 36;
+    const FLAG_W = 46;
+    const FLAG_H = 32;
+    const FLAG_R = 6;
 
-    const dayMatches = matches.filter(m => m.date === selectedDate);
+    const dayMatches = matches
+      .filter(m => m.date === selectedDate)
+      .sort((a, b) => a.kickoff - b.kickoff);
 
     // Only include matches where the user has a prediction
     const rows = dayMatches
@@ -631,7 +633,7 @@ export default function App() {
       })
       .filter(Boolean);
 
-    // Pre-load flag images
+    // Pre-load flag images + watermark logo
     const loadImg = url => new Promise(res => {
       if (!url) return res(null);
       const img = new Image();
@@ -640,9 +642,10 @@ export default function App() {
       img.src = url;
     });
     const uniqueTeams = [...new Set(dayMatches.flatMap(m => [m.team1, m.team2]))];
-    const flagImgs = Object.fromEntries(
-      await Promise.all(uniqueTeams.map(async t => [t, await loadImg(getFlagUrl(t))]))
-    );
+    const [flagImgs, watermarkImg] = await Promise.all([
+      Promise.all(uniqueTeams.map(async t => [t, await loadImg(getFlagUrl(t))])).then(Object.fromEntries),
+      loadImg(worldcupLogo),
+    ]);
 
     const H = HEADER_H + SEP + rows.length * ROW_H + SEP + FOOTER_H;
     const canvas = document.createElement('canvas');
@@ -696,30 +699,43 @@ export default function App() {
     rrPath(3, 3, W - 6, H - 6, 18);
     ctx.stroke();
 
+    // ── Watermark ────────────────────────────────────────
+    if (watermarkImg) {
+      const wmSize = 220;
+      const contentH = rows.length * ROW_H;
+      const wmX = (W - wmSize) / 2;
+      const wmY = HEADER_H + SEP + (contentH - wmSize) / 2;
+      ctx.save();
+      ctx.globalAlpha = 0.07;
+      ctx.drawImage(watermarkImg, wmX, wmY, wmSize, wmSize);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // ── Header ───────────────────────────────────────────
     ctx.fillStyle = '#00ff87';
-    ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
+    ctx.font = 'bold 18px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('RINCONMUNDIAL', PADDING, 38);
+    ctx.fillText('RINCONMUNDIAL', PADDING, 30);
 
     ctx.fillStyle = '#9ca3af';
-    ctx.font = '13px system-ui, -apple-system, sans-serif';
-    ctx.fillText(formatDateToSpanish(selectedDate).toUpperCase(), PADDING, 60);
+    ctx.font = '12px system-ui, -apple-system, sans-serif';
+    ctx.fillText(formatDateToSpanish(selectedDate).toUpperCase(), PADDING, 50);
 
     const shortName = currentUserProfile.name.split(' ')[0].toUpperCase();
     ctx.fillStyle = '#e5e7eb';
-    ctx.font = 'bold 15px system-ui, -apple-system, sans-serif';
+    ctx.font = 'bold 14px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(shortName, W - PADDING, 38);
+    ctx.fillText(shortName, W - PADDING, 30);
     ctx.fillStyle = '#6b7280';
-    ctx.font = '12px system-ui, -apple-system, sans-serif';
-    ctx.fillText('MIS PREDICCIONES', W - PADDING, 60);
+    ctx.font = '11px system-ui, -apple-system, sans-serif';
+    ctx.fillText('MIS PREDICCIONES', W - PADDING, 50);
 
     ctx.strokeStyle = 'rgba(0, 255, 135, 0.18)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(PADDING, HEADER_H - 4);
-    ctx.lineTo(W - PADDING, HEADER_H - 4);
+    ctx.moveTo(PADDING, HEADER_H - 6);
+    ctx.lineTo(W - PADDING, HEADER_H - 6);
     ctx.stroke();
 
     // ── Match rows (predictions only) ────────────────────
@@ -727,36 +743,44 @@ export default function App() {
     const RIGHT_FLAG_X = W - PADDING - FLAG_W;
     const LEFT_CENTER  = LEFT_FLAG_X  + FLAG_W / 2;
     const RIGHT_CENTER = RIGHT_FLAG_X + FLAG_W / 2;
-    const NAME_MAX_W   = W / 2 - LEFT_CENTER - 20;
+    const NAME_MAX_W   = W / 2 - LEFT_CENTER - 14;
 
     rows.forEach(({ m, pred }, idx) => {
       const rowY  = HEADER_H + SEP + idx * ROW_H;
-      const flagY = rowY + (ROW_H - FLAG_H - 18) / 2;
-      const nameY = flagY + FLAG_H + 13;
-      const predY = flagY + FLAG_H / 2 + 8; // vertically centered with flag
+      const timeY = rowY + 14;
+      const flagY = rowY + 22;
+      const nameY = flagY + FLAG_H + 12;
+      const predY = flagY + FLAG_H / 2 + 7;
 
       if (idx % 2 === 0) {
         ctx.fillStyle = 'rgba(255,255,255,0.025)';
         ctx.fillRect(PADDING - 8, rowY + 2, W - (PADDING - 8) * 2, ROW_H - 4);
       }
 
+      // Time + group (small, centered at top of row)
+      const groupShort = m.group ? m.group.replace('Group ', 'G') : '';
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '10px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${formatKickoffColombia(m.kickoff)}  ·  ${groupShort}`, W / 2, timeY);
+
       // Left team: flag + name
       drawFlag(flagImgs[m.team1], LEFT_FLAG_X, flagY);
       ctx.fillStyle = '#d1d5db';
-      ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(truncate(translateTeamToSpanish(m.team1).toUpperCase(), NAME_MAX_W * 2), LEFT_CENTER, nameY);
 
       // Right team: flag + name
       drawFlag(flagImgs[m.team2], RIGHT_FLAG_X, flagY);
       ctx.fillStyle = '#d1d5db';
-      ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(truncate(translateTeamToSpanish(m.team2).toUpperCase(), NAME_MAX_W * 2), RIGHT_CENTER, nameY);
 
-      // Center: prediction score (prominent)
+      // Center: prediction score
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 30px system-ui, -apple-system, sans-serif';
+      ctx.font = 'bold 26px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`${pred.predictedHome}  —  ${pred.predictedAway}`, W / 2, predY);
     });
@@ -764,9 +788,9 @@ export default function App() {
     // ── Footer branding ──────────────────────────────────
     const footerY = HEADER_H + SEP + rows.length * ROW_H + SEP;
     ctx.fillStyle = '#374151';
-    ctx.font = '11px system-ui, -apple-system, sans-serif';
+    ctx.font = '10px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('rinconmundial · mundial 2026', W / 2, footerY + 26);
+    ctx.fillText('rinconmundial · mundial 2026', W / 2, footerY + 22);
 
     return new Promise(res => canvas.toBlob(res, 'image/png'));
   };
