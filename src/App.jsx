@@ -1492,12 +1492,14 @@ export default function App() {
                                 </div>
                               </div>
                             </td>
-                            <td style={{ textAlign: "right" }}>
-                              <span className="rank-score-total">{u.totalPoints + u.livePoints} PTS</span>
-                              {u.hasLivePoints && (
-                                <span className="rank-live-pts-tag">+{u.livePoints} en vivo</span>
-                              )}
-                              <span className="rank-expand-hint">{isExpanded ? "▲" : "▼"}</span>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "10px" }}>
+                                {hasAnyLiveMatch && u.hasLivePoints && (
+                                  <span className="rank-live-pts-tag">+{u.livePoints} en vivo</span>
+                                )}
+                                <span className="rank-score-total">{u.totalPoints + u.livePoints} PTS</span>
+                                <span className="rank-expand-hint">{isExpanded ? "▲" : "▼"}</span>
+                              </div>
                             </td>
                           </tr>
                           {isExpanded && (
@@ -1578,6 +1580,39 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+
+              {/* Live scoreboard strip — only when matches are in progress */}
+              {(() => {
+                const liveMatches = matches.filter(m => isLiveStatus(liveScores[m.id]));
+                if (!liveMatches.length) return null;
+                return (
+                  <div className="live-score-strip">
+                    <div className="live-strip-header">
+                      <span className="live-chip-dot" />
+                      <span className="live-chip-label">EN VIVO</span>
+                    </div>
+                    <div className="live-strip-chips">
+                      {liveMatches.map(m => {
+                        const live = liveScores[m.id];
+                        return (
+                          <div className="live-score-chip" key={m.id}>
+                            <div className="live-chip-body">
+                              <img className="live-chip-flag" src={getFlagUrl(m.team1)} alt={m.team1} onError={e => { e.target.style.opacity = '0'; }} />
+                              <span className="live-chip-score">{live.homeScore}</span>
+                              <div className="live-chip-center">
+                                <img className="live-chip-logo" src={worldcupLogo} alt="" />
+                                <span className="live-chip-clock">{live.displayClock}</span>
+                              </div>
+                              <span className="live-chip-score">{live.awayScore}</span>
+                              <img className="live-chip-flag" src={getFlagUrl(m.team2)} alt={m.team2} onError={e => { e.target.style.opacity = '0'; }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </>
           )}
 

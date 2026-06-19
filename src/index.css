@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
 :root {
   --bg-main: #0b0d12;
@@ -1624,12 +1624,17 @@ body {
 
 /* Live points badge in ranking row */
 .rank-live-pts-tag {
-  display: block;
-  font-size: 10px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
   font-weight: 700;
   color: var(--neon-green);
-  letter-spacing: 0.4px;
-  margin-top: 1px;
+  background: rgba(0, 255, 135, 0.08);
+  border: 1px solid rgba(0, 255, 135, 0.25);
+  border-radius: 20px;
+  padding: 2px 8px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
 }
 
 /* Live indicator in summary cards (INICIO tab) */
@@ -2182,4 +2187,118 @@ body {
     content: "NOMBRE";
     font-size: 11px;
   }
+}
+
+/* ── Live scoreboard strip (Ranking view) ─────────────── */
+.live-score-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.live-strip-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-strip-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.live-score-chip {
+  display: inline-flex;
+  flex-direction: column;
+  background: linear-gradient(135deg, #0d1117 0%, #13202e 100%);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+
+.live-chip-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: chip-blink 1.2s ease-in-out infinite;
+}
+
+@keyframes chip-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.15; }
+}
+
+.live-chip-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: #ef4444;
+  letter-spacing: 1.5px;
+}
+
+.live-chip-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  gap: 8px;
+}
+
+.live-chip-team {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.live-chip-team-rev {
+  flex-direction: row-reverse;
+}
+
+.live-chip-flag {
+  width: 34px;
+  height: 24px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+.live-chip-abbr {
+  font-size: 13px;
+  font-weight: 800;
+  color: #e5e7eb;
+  letter-spacing: 1px;
+}
+
+.live-chip-score {
+  font-family: 'Bebas Neue', sans-serif;
+  font-size: 42px;
+  font-weight: 400;
+  color: #ffffff;
+  line-height: 1;
+  min-width: 26px;
+  text-align: center;
+  letter-spacing: 1px;
+}
+
+.live-chip-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.live-chip-logo {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
+.live-chip-clock {
+  font-size: 11px;
+  font-weight: 700;
+  color: #00ff87;
+  letter-spacing: 0.5px;
 }
