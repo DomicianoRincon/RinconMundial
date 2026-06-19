@@ -1214,7 +1214,7 @@ export default function App() {
                     }
 
                     return (
-                      <div className={`match-card ${!isLocked ? "active-today" : ""}`} key={m.id}>
+                      <div className={`match-card ${!isLocked ? "active-today" : ""} ${isMatchLive ? "match-card-live" : ""}`} key={m.id}>
                         <div className="match-card-header">
                           <span className="match-group">{m.group}</span>
                           <span className={`match-countdown ${isMatchLive ? "live" : isLocked ? "locked" : ""}`}>
@@ -1482,7 +1482,7 @@ export default function App() {
                                       <div className="breakdown-date-group" key={dateLabel}>
                                         <div className="breakdown-date-label">{dateLabel}</div>
                                         {items.map(({ m, pred, hasReal, real, pts, exactHit, winnerHit, homeGoal, awayGoal, isLive, live }) => (
-                                          <div className="breakdown-match" key={m.id}>
+                                          <div className={`breakdown-match${isLive ? " breakdown-match-live" : ""}`} key={m.id}>
                                             {/* Teams row with flags */}
                                             <div className="breakdown-teams">
                                               <div className="breakdown-team">
