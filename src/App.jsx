@@ -63,6 +63,14 @@ const formatDateToSpanish = (dateStr) => {
   return `${MONTHS[month]} ${parseInt(day, 10)}`;
 };
 
+const formatKickoffColombia = (kickoff) =>
+  kickoff.toLocaleTimeString("es-CO", {
+    timeZone: "America/Bogota",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+
 // Time parser for "2026-06-18" and "12:00 UTC-7"
 const parseMatchTime = (dateStr, timeStr) => {
   try {
@@ -909,7 +917,9 @@ export default function App() {
   }
 
   // MAIN LAYOUT
-  const filteredMatches = matches.filter(m => m.date === selectedDate);
+  const filteredMatches = matches
+    .filter(m => m.date === selectedDate)
+    .sort((a, b) => a.kickoff - b.kickoff);
 
   return (
     <div className="app-container">
@@ -1141,6 +1151,7 @@ export default function App() {
                           <div className="final-card-meta">
                             <span className="final-group-tag">{groupLabel}</span>
                             <span className="final-venue-tag">{m.ground}</span>
+                            <span className="final-venue-tag">{formatKickoffColombia(m.kickoff)}</span>
                           </div>
 
                           <div className="final-status-label">FINALIZADO</div>
@@ -1277,6 +1288,7 @@ export default function App() {
                         {/* Footer: status and info */}
                         <div className="match-card-footer">
                           <span className="match-venue">{m.ground}</span>
+                          <span className="match-venue">{formatKickoffColombia(m.kickoff)}</span>
                           {saveStatus[m.id] && (
                             <div className="autosave-status">
                               {saveStatus[m.id] === "saving" && <span className="status-saving">Guardando...</span>}
@@ -1494,6 +1506,9 @@ export default function App() {
                                               <div className="breakdown-vs-sep">
                                                 {isLive && <span className="breakdown-live-badge">EN VIVO {live?.displayClock}</span>}
                                                 {!isLive && <span className="breakdown-vs-label">VS</span>}
+                                                <span style={{ fontSize: "11px", color: "var(--text-secondary)", marginTop: "2px" }}>
+                                                  {formatKickoffColombia(m.kickoff)}
+                                                </span>
                                               </div>
                                               <div className="breakdown-team breakdown-team-right">
                                                 <div className="breakdown-flag">
