@@ -13,6 +13,7 @@ import {
 } from "firebase/firestore";
 import { auth, db } from "./firebase";
 import worldCupData from "./worldcup.json";
+import worldcupLogo from "./assets/worldcup.png";
 import {
   Trophy,
   Calendar,
@@ -925,9 +926,8 @@ export default function App() {
     <div className="app-container">
       {/* Sidebar Navigation */}
       <aside className="sidebar">
-        <div className="logo-container">
-          <Trophy className="logo-icon" />
-          <h1 className="logo-text">RinconMundial</h1>
+        <div className="logo-container" style={{ justifyContent: "center" }}>
+          <img src={worldcupLogo} alt="RinconMundial" style={{ width: 72, height: 72, objectFit: "contain" }} />
         </div>
         <ul className="nav-menu">
           <li 
@@ -965,9 +965,8 @@ export default function App() {
       {/* Mobile Drawer Panel */}
       <nav className={`drawer-panel${drawerOpen ? " drawer-open" : ""}`}>
         <div className="drawer-header">
-          <div className="logo-container" style={{ padding: 0, paddingBottom: 0 }}>
-            <Trophy className="logo-icon" />
-            <h1 className="logo-text">RinconMundial</h1>
+          <div className="logo-container" style={{ padding: 0, paddingBottom: 0, justifyContent: "center" }}>
+            <img src={worldcupLogo} alt="RinconMundial" style={{ width: 72, height: 72, objectFit: "contain" }} />
           </div>
           <button className="drawer-close-btn" onClick={() => setDrawerOpen(false)}>
             <X size={22} />
@@ -1002,9 +1001,9 @@ export default function App() {
             <Menu size={24} />
           </button>
           <div className="header-title-section">
-            <span className="header-subtitle">POLLETA MUNDIALISTA</span>
+            <span className="header-subtitle">POLLA MUNDIALISTA</span>
             <h1 className="header-title">
-              <span className="header-title-text">FIFA WORLD CUP </span><Trophy size={22} />
+              <span className="header-title-text">RINCON MUNDIAL </span><img src={worldcupLogo} alt="" style={{ width: 22, height: 22, objectFit: "contain", verticalAlign: "middle" }} />
             </h1>
           </div>
           <div className="user-profile">
