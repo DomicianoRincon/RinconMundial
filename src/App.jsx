@@ -494,8 +494,10 @@ export default function App() {
   const MONTH_ABBR = ['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
   const getUserMatchBreakdown = (userEmail) => {
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
     return matches
       .filter(m => {
+        if (m.date > today) return false;
         const pred = predictions[`${userEmail}_${m.id}`];
         return pred && pred.predictedHome !== "" && pred.predictedAway !== "";
       })
