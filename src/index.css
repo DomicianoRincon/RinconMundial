@@ -621,8 +621,10 @@ body {
 /* Matches Grid */
 .matches-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  grid-template-columns: 1fr;
   gap: 24px;
+  max-width: 640px;
+  margin: 0 auto;
 }
 
 /* Match Card styling */
@@ -1924,6 +1926,8 @@ body {
   .matches-grid {
     grid-template-columns: 1fr;
     gap: 14px;
+    max-width: none;
+    margin: 0;
   }
 
   .ranking-summary-grid {
