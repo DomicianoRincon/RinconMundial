@@ -20,7 +20,10 @@ import {
   Loader,
   Clock,
   Home,
-  CheckSquare
+  CheckSquare,
+  Share2,
+  Menu,
+  X
 } from "lucide-react";
 
 const ESPN_TO_LOCAL_TEAM = {
@@ -119,6 +122,12 @@ export default function App() {
 
   // Show welcome screen after fresh login (not on page reload)
   const [showWelcome, setShowWelcome] = useState(false);
+
+  // Share image generation state
+  const [isSharing, setIsSharing] = useState(false);
+
+  // Mobile drawer state
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   // Time tracking
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -229,11 +238,16 @@ export default function App() {
     selectedDateRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
   }, [selectedDate]);
 
+  // One-shot fetch when user enters the app (matches already loaded)
+  useEffect(() => {
+    if (!user || matches.length === 0) return;
+    fetchAllLiveScores();
+  }, [user?.uid, matches.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Auto-poll ESPN every 60s when there are locked matches
   const lockedMatchIds = matches.filter(m => currentTime >= m.kickoff).map(m => m.id).join(",");
   useEffect(() => {
     if (!user || !lockedMatchIds) return;
-    fetchAllLiveScores();
     const interval = setInterval(fetchAllLiveScores, 60_000);
     return () => clearInterval(interval);
   }, [user, lockedMatchIds]); // re-runs only when a new match becomes locked
@@ -408,20 +422,23 @@ export default function App() {
   // Calculate Leaderboard from registered users
   const getLeaderboard = () => {
     return registeredUsers.map((u) => {
-      let totalPoints = 0, exactHits = 0, winnerHits = 0, predictedCount = 0;
+      let totalPoints = 0, exactHits = 0, winnerHits = 0, predictedCount = 0, livePoints = 0;
 
       matches.forEach((m) => {
         const pred = predictions[`${u.email}_${m.id}`];
         const real = officialResults[m.id];
+        const live = liveScores[m.id];
         if (pred && pred.predictedHome !== "" && pred.predictedAway !== "") {
           predictedCount++;
-          if (real && real.homeScore !== "" && real.awayScore !== "") {
+          if (real && real.homeScore !== "" && real.homeScore !== undefined) {
             const pts = calculatePoints(pred.predictedHome, pred.predictedAway, real.homeScore, real.awayScore);
             totalPoints += pts;
             const pH = parseInt(pred.predictedHome, 10), pA = parseInt(pred.predictedAway, 10);
             const rH = parseInt(real.homeScore, 10), rA = parseInt(real.awayScore, 10);
             if (pH === rH && pA === rA) exactHits++;
             if (Math.sign(pH - pA) === Math.sign(rH - rA)) winnerHits++;
+          } else if (isLiveStatus(live) && live.homeScore !== "" && live.homeScore !== undefined) {
+            livePoints += calculatePoints(pred.predictedHome, pred.predictedAway, live.homeScore, live.awayScore);
           }
         }
       });
@@ -436,16 +453,21 @@ export default function App() {
         totalPoints,
         exactHits,
         winnerHits,
-        predictedCount
+        predictedCount,
+        livePoints,
+        hasLivePoints: livePoints > 0,
       };
     }).sort((a, b) => {
-      if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints;
+      const aTotal = a.totalPoints + a.livePoints;
+      const bTotal = b.totalPoints + b.livePoints;
+      if (bTotal !== aTotal) return bTotal - aTotal;
       if (b.exactHits !== a.exactHits) return b.exactHits - a.exactHits;
       return b.winnerHits - a.winnerHits;
     });
   };
 
   const leaderboard = getLeaderboard();
+  const hasAnyLiveMatch = matches.some(m => isLiveStatus(liveScores[m.id]));
 
   const MONTH_ABBR = ['', 'ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
@@ -552,6 +574,210 @@ export default function App() {
   };
 
   const translateTeamToSpanish = (teamName) => TEAM_ES[teamName] || teamName;
+
+  // ── Share image ────────────────────────────────────────
+  const generateShareImage = () => {
+    return new Promise((resolve) => {
+      const W = 900;
+      const PADDING = 36;
+      const HEADER_H = 96;
+      const SEP = 20;
+      const MATCH_H = 70;
+      const FOOTER_H = 80;
+
+      const dayMatches = matches.filter(m => m.date === selectedDate);
+      const rows = dayMatches.map(m => {
+        const real = officialResults[m.id];
+        const pred = predictions[`${user.email}_${m.id}`];
+        const hasReal = real && real.homeScore !== "" && real.homeScore !== undefined;
+        const hasPred = pred && pred.predictedHome !== "" && pred.predictedAway !== "";
+        const pts = (hasReal && hasPred)
+          ? calculatePoints(pred.predictedHome, pred.predictedAway, real.homeScore, real.awayScore)
+          : null;
+        return { m, real, pred, hasReal, hasPred, pts };
+      });
+
+      const totalDayPts = rows.reduce((acc, r) => acc + (r.pts ?? 0), 0);
+      const H = HEADER_H + SEP + rows.length * MATCH_H + SEP + FOOTER_H;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = W * 2;
+      canvas.height = H * 2;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(2, 2);
+
+      // Background
+      ctx.fillStyle = '#0d1117';
+      ctx.fillRect(0, 0, W, H);
+
+      // Outer border with rounded corners
+      const drawRoundRect = (x, y, w, h, r) => {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      };
+      ctx.strokeStyle = 'rgba(0, 255, 135, 0.35)';
+      ctx.lineWidth = 2;
+      drawRoundRect(3, 3, W - 6, H - 6, 18);
+      ctx.stroke();
+
+      // ── Header ─────────────────────────────────────────
+      // Brand
+      ctx.fillStyle = '#00ff87';
+      ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('RINCONMUNDIAL', PADDING, 40);
+
+      // Date
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '13px system-ui, -apple-system, sans-serif';
+      ctx.fillText(formatDateToSpanish(selectedDate).toUpperCase(), PADDING, 62);
+
+      // User name (right side)
+      const shortName = currentUserProfile.name.split(' ')[0].toUpperCase();
+      ctx.fillStyle = '#e5e7eb';
+      ctx.font = 'bold 15px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(shortName, W - PADDING, 40);
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '12px system-ui, -apple-system, sans-serif';
+      ctx.fillText('MIS PREDICCIONES', W - PADDING, 60);
+
+      // Divider
+      ctx.strokeStyle = 'rgba(0, 255, 135, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(PADDING, HEADER_H - 4);
+      ctx.lineTo(W - PADDING, HEADER_H - 4);
+      ctx.stroke();
+
+      // ── Match rows ─────────────────────────────────────
+      rows.forEach(({ m, real, pred, hasReal, hasPred, pts }, idx) => {
+        const y = HEADER_H + SEP + idx * MATCH_H;
+        const midY = y + MATCH_H / 2;
+
+        // Subtle zebra stripe
+        if (idx % 2 === 0) {
+          ctx.fillStyle = 'rgba(255,255,255,0.025)';
+          ctx.fillRect(PADDING - 8, y + 2, W - (PADDING - 8) * 2, MATCH_H - 4);
+        }
+
+        // Team1
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(getTeamAbbreviation(m.team1), PADDING, midY - 6);
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '10px system-ui, -apple-system, sans-serif';
+        ctx.fillText(translateTeamToSpanish(m.team1).toUpperCase().substring(0, 12), PADDING, midY + 12);
+
+        // Score center
+        const scoreText = hasReal ? `${real.homeScore}  —  ${real.awayScore}` : 'vs';
+        ctx.fillStyle = hasReal ? '#ffffff' : '#4b5563';
+        ctx.font = hasReal ? 'bold 22px system-ui, -apple-system, sans-serif' : '16px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(scoreText, W / 2, midY - 4);
+
+        // Prediction below score
+        if (hasPred) {
+          ctx.fillStyle = '#9ca3af';
+          ctx.font = '11px system-ui, -apple-system, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(`Pred: ${pred.predictedHome} - ${pred.predictedAway}`, W / 2, midY + 14);
+        }
+
+        // Team2 (right)
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
+        ctx.textAlign = 'right';
+        ctx.fillText(getTeamAbbreviation(m.team2), W - PADDING, midY - 6);
+        ctx.fillStyle = '#6b7280';
+        ctx.font = '10px system-ui, -apple-system, sans-serif';
+        ctx.fillText(translateTeamToSpanish(m.team2).toUpperCase().substring(0, 12), W - PADDING, midY + 12);
+
+        // Points badge
+        if (pts !== null) {
+          const ptsLabel = `+${pts} PTS`;
+          const ptsColor = pts === 0 ? '#4b5563' : pts >= 5 ? '#fbbf24' : '#00ff87';
+          ctx.fillStyle = ptsColor;
+          ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
+          ctx.textAlign = 'center';
+          // small pill background
+          const labelW = ctx.measureText(ptsLabel).width + 14;
+          ctx.fillStyle = pts === 0 ? 'rgba(75,85,99,0.25)' : pts >= 5 ? 'rgba(251,191,36,0.15)' : 'rgba(0,255,135,0.12)';
+          const pillX = W / 2 - labelW / 2;
+          drawRoundRect(pillX, midY + 20, labelW, 18, 4);
+          ctx.fill();
+          ctx.fillStyle = ptsColor;
+          ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(ptsLabel, W / 2, midY + 33);
+        }
+      });
+
+      // Bottom divider
+      const divY = HEADER_H + SEP + rows.length * MATCH_H + 8;
+      ctx.strokeStyle = 'rgba(0, 255, 135, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(PADDING, divY);
+      ctx.lineTo(W - PADDING, divY);
+      ctx.stroke();
+
+      // ── Footer ─────────────────────────────────────────
+      const footerMidY = divY + FOOTER_H / 2;
+      const ptsColor = totalDayPts === 0 ? '#6b7280' : totalDayPts >= 10 ? '#fbbf24' : '#00ff87';
+      ctx.fillStyle = ptsColor;
+      ctx.font = 'bold 32px system-ui, -apple-system, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`+${totalDayPts} PTS`, W / 2, footerMidY + 6);
+      ctx.fillStyle = '#6b7280';
+      ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
+      ctx.fillText('TOTAL DEL DÍA', W / 2, footerMidY + 26);
+
+      canvas.toBlob(resolve, 'image/png');
+    });
+  };
+
+  const handleShare = async () => {
+    setIsSharing(true);
+    try {
+      const blob = await generateShareImage();
+      const dateLabel = formatDateToSpanish(selectedDate);
+      const fileName = `rinconmundial-${selectedDate}.png`;
+      const file = new File([blob], fileName, { type: 'image/png' });
+
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: `RinconMundial · ${dateLabel}`,
+          text: `Mis predicciones del ${dateLabel} ⚽`,
+          files: [file],
+        });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      if (err.name !== 'AbortError') console.error('Share error:', err);
+    } finally {
+      setIsSharing(false);
+    }
+  };
+  // ── End share ──────────────────────────────────────────
 
   if (loading) {
     return (
@@ -705,23 +931,41 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Mobile Bottom Navigation */}
-      <nav className="mobile-nav">
-        <div className={`mobile-nav-item ${currentTab === "inicio" ? "active" : ""}`} onClick={() => setCurrentTab("inicio")}>
-          <Home size={22} />
-          <span>INICIO</span>
+      {/* Mobile Drawer Overlay */}
+      <div
+        className={`drawer-overlay${drawerOpen ? " drawer-overlay-visible" : ""}`}
+        onClick={() => setDrawerOpen(false)}
+      />
+
+      {/* Mobile Drawer Panel */}
+      <nav className={`drawer-panel${drawerOpen ? " drawer-open" : ""}`}>
+        <div className="drawer-header">
+          <div className="logo-container" style={{ padding: 0, paddingBottom: 0 }}>
+            <Trophy className="logo-icon" />
+            <h1 className="logo-text">RinconMundial</h1>
+          </div>
+          <button className="drawer-close-btn" onClick={() => setDrawerOpen(false)}>
+            <X size={22} />
+          </button>
         </div>
-        <div className={`mobile-nav-item ${currentTab === "predicciones" ? "active" : ""}`} onClick={() => setCurrentTab("predicciones")}>
-          <CheckSquare size={22} />
-          <span>PREDIC.</span>
-        </div>
-        <div className={`mobile-nav-item ${currentTab === "ranking" ? "active" : ""}`} onClick={() => setCurrentTab("ranking")}>
-          <Trophy size={22} />
-          <span>RANKING</span>
-        </div>
-        <div className="mobile-nav-item" onClick={handleLogout}>
-          <LogOut size={22} />
-          <span>SALIR</span>
+        <ul className="nav-menu">
+          <li className={`nav-item ${currentTab === "inicio" ? "active" : ""}`}
+              onClick={() => { setCurrentTab("inicio"); setDrawerOpen(false); }}>
+            <Home /> INICIO
+          </li>
+          <li className={`nav-item ${currentTab === "predicciones" ? "active" : ""}`}
+              onClick={() => { setCurrentTab("predicciones"); setDrawerOpen(false); }}>
+            <CheckSquare /> PREDICCIONES
+          </li>
+          <li className={`nav-item ${currentTab === "ranking" ? "active" : ""}`}
+              onClick={() => { setCurrentTab("ranking"); setDrawerOpen(false); }}>
+            <Trophy /> RANKING
+          </li>
+        </ul>
+        <div className="logout-container">
+          <div className="nav-item" onClick={handleLogout}>
+            <LogOut /> CERRAR SESIÓN
+          </div>
         </div>
       </nav>
 
@@ -729,6 +973,9 @@ export default function App() {
       <main className="main-content">
         {/* Header */}
         <header className="app-header">
+          <button className="mobile-menu-btn" onClick={() => setDrawerOpen(true)} aria-label="Abrir menú">
+            <Menu size={24} />
+          </button>
           <div className="header-title-section">
             <span className="header-subtitle">POLLETA MUNDIALISTA</span>
             <h1 className="header-title">
@@ -772,14 +1019,17 @@ export default function App() {
               <h2 style={{ fontSize: "20px", fontWeight: "800", marginTop: "12px" }}>Posiciones Actuales</h2>
               <div className="ranking-summary-grid">
                 {leaderboard.map((u, i) => (
-                  <div className={`summary-card summary-card-${i+1}`} key={u.emailKey}>
+                  <div className={`summary-card summary-card-${i+1}`} key={u.email}>
                     <span className="summary-card-label">PUESTO {i+1}</span>
                     <span className="summary-card-value" style={{ color: i === 0 ? "#fbbf24" : i === 1 ? "#94a3b8" : "#b45309" }}>
                       {u.name}
                     </span>
                     <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
-                      {u.totalPoints} PTS | {u.exactHits} Marcadores Exactos
+                      {u.totalPoints + u.livePoints} PTS | {u.exactHits} Marcadores Exactos
                     </span>
+                    {u.hasLivePoints && (
+                      <span className="summary-live-tag"><span className="summary-live-dot" /> +{u.livePoints} en vivo</span>
+                    )}
                   </div>
                 ))}
               </div>
@@ -879,7 +1129,7 @@ export default function App() {
                             <span className="final-venue-tag">{m.ground}</span>
                           </div>
 
-                          <div className="final-status-label">[FINALIZADO]</div>
+                          <div className="final-status-label">FINALIZADO</div>
 
                           {/* Teams + Scores */}
                           <div className="final-card-body">
@@ -1125,12 +1375,33 @@ export default function App() {
                   })
                 )}
               </div>
+
+              {/* Share FAB — visible when there are matches for this day */}
+              {filteredMatches.length > 0 && (
+                <button
+                  className={`share-fab${isSharing ? " share-fab-loading" : ""}`}
+                  onClick={handleShare}
+                  disabled={isSharing}
+                  title={`Compartir marcadores del ${formatDateToSpanish(selectedDate)}`}
+                >
+                  {isSharing
+                    ? <Loader size={22} style={{ animation: "spin 1s linear infinite" }} />
+                    : <Share2 size={22} />}
+                </button>
+              )}
             </>
           )}
 
           {/* 3. RANKING VIEW */}
           {currentTab === "ranking" && (
             <>
+              {hasAnyLiveMatch && (
+                <div className="live-ranking-banner">
+                  <span className="live-ranking-dot" />
+                  <span className="live-ranking-title">EN VIVO · RESULTADOS PARCIALES</span>
+                  <span className="live-ranking-sub">Los puntos se actualizan con el marcador actual</span>
+                </div>
+              )}
               <div className="ranking-table-card">
                 <table className="ranking-table">
                   <thead>
@@ -1170,7 +1441,10 @@ export default function App() {
                               </div>
                             </td>
                             <td style={{ textAlign: "right" }}>
-                              <span className="rank-score-total">{u.totalPoints} PTS</span>
+                              <span className="rank-score-total">{u.totalPoints + u.livePoints} PTS</span>
+                              {u.hasLivePoints && (
+                                <span className="rank-live-pts-tag">+{u.livePoints} en vivo</span>
+                              )}
                               <span className="rank-expand-hint">{isExpanded ? "▲" : "▼"}</span>
                             </td>
                           </tr>

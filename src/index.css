@@ -1274,6 +1274,16 @@ body {
   margin-top: 8px;
 }
 
+/* Inside finalized card: flat section separated by a line, no bubble styling */
+.match-card-final .rival-predictions-container {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0;
+  margin-top: 0;
+  padding: 12px 20px;
+  background: transparent;
+}
+
 .rival-predictions-title {
   font-size: 11px;
   font-weight: 800;
@@ -1316,11 +1326,11 @@ body {
 
 .match-card-final {
   background: var(--bg-card);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 255, 135, 0.25);
+  /* backdrop-filter intentionally omitted: it breaks overflow:hidden in Chrome/Safari */
+  /* border replaced with outer box-shadow so overflow:hidden doesn't create a gap at the bottom */
   border-radius: 20px;
   overflow: hidden;
-  box-shadow: 0 0 24px rgba(0, 255, 135, 0.06), var(--glass-shadow);
+  box-shadow: 0 0 0 1px rgba(0, 255, 135, 0.25), 0 0 24px rgba(0, 255, 135, 0.06), var(--glass-shadow);
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -1503,6 +1513,76 @@ body {
   color: var(--text-muted);
 }
 
+/* Live Ranking Banner */
+.live-ranking-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0, 255, 135, 0.08);
+  border: 1px solid rgba(0, 255, 135, 0.25);
+  border-radius: 12px;
+  padding: 10px 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.live-ranking-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ef4444;
+  flex-shrink: 0;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
+}
+
+.live-ranking-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--neon-green);
+  letter-spacing: 0.8px;
+}
+
+.live-ranking-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Live points badge in ranking row */
+.rank-live-pts-tag {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--neon-green);
+  letter-spacing: 0.4px;
+  margin-top: 1px;
+}
+
+/* Live indicator in summary cards (INICIO tab) */
+.summary-live-tag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--neon-green);
+  margin-top: 2px;
+}
+
+.summary-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  display: inline-block;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
 /* Spin animation (used by Loader and RefreshCw icons) */
 @keyframes spin {
   from { transform: rotate(0deg); }
@@ -1632,67 +1712,144 @@ body {
 }
 
 /* ── Mobile Bottom Navigation ─────────────────────────── */
-.mobile-nav {
+/* ── Mobile hamburger button ─────────────────────────── */
+.mobile-menu-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mobile-menu-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.06);
+}
+
+/* ── Navigation Drawer ───────────────────────────────── */
+.drawer-overlay {
   display: none;
   position: fixed;
-  bottom: 0;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 300;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease;
+}
+
+.drawer-overlay.drawer-overlay-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.drawer-panel {
+  display: none;
+  position: fixed;
+  top: 0;
   left: 0;
-  right: 0;
-  height: 64px;
-  background-color: var(--bg-sidebar);
-  border-top: 1px solid var(--border-color);
-  z-index: 20;
-  justify-content: space-around;
-  align-items: center;
-  padding: 0 8px;
-  backdrop-filter: blur(12px);
-}
-
-.mobile-nav-item {
-  display: flex;
+  height: 100dvh;
+  width: 280px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+  z-index: 310;
   flex-direction: column;
+  padding: 24px 16px;
+  transform: translateX(-100%);
+  transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-y: auto;
+}
+
+.drawer-panel.drawer-open {
+  transform: translateX(0);
+}
+
+.drawer-header {
+  display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 8px 12px;
-  cursor: pointer;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.drawer-close-btn {
+  background: none;
+  border: none;
   color: var(--text-muted);
-  border-radius: 10px;
-  transition: color 0.2s ease;
-  flex: 1;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, background 0.15s;
 }
 
-.mobile-nav-item span {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
+.drawer-close-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255,255,255,0.06);
 }
 
-.mobile-nav-item.active {
-  color: var(--neon-green);
+/* ── Share FAB ────────────────────────────────────────── */
+.share-fab {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--neon-green);
+  color: #0a1a0f;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0, 255, 135, 0.45), 0 2px 8px rgba(0,0,0,0.4);
+  z-index: 200;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
 }
 
-.mobile-nav-item.active svg {
-  filter: drop-shadow(0 0 6px rgba(0, 255, 135, 0.5));
+.share-fab:hover:not(:disabled) {
+  transform: scale(1.1);
+  box-shadow: 0 6px 28px rgba(0, 255, 135, 0.6), 0 2px 8px rgba(0,0,0,0.4);
+}
+
+.share-fab:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.share-fab-loading {
+  background: rgba(0, 255, 135, 0.55);
+  cursor: not-allowed;
 }
 
 /* ── Responsive: Mobile (≤ 768px) ────────────────────── */
 @media (max-width: 768px) {
+  /* Show drawer elements, hide desktop sidebar */
   .sidebar {
     display: none;
   }
 
-  .mobile-nav {
+  .mobile-menu-btn {
     display: flex;
   }
 
-  .main-content {
-    padding-bottom: 64px;
+  .drawer-overlay,
+  .drawer-panel {
+    display: flex;
   }
 
+  /* Header */
   .app-header {
     height: 60px;
-    padding: 0 16px;
+    padding: 0 14px;
+    gap: 10px;
   }
 
   .header-subtitle {
@@ -1700,46 +1857,102 @@ body {
   }
 
   .header-title {
-    font-size: 18px;
+    font-size: 17px;
   }
 
+  /* Page */
   .page-container {
-    padding: 16px;
-    gap: 16px;
+    padding: 14px;
+    gap: 14px;
   }
 
   .matches-grid {
     grid-template-columns: 1fr;
-    gap: 16px;
+    gap: 14px;
   }
 
   .ranking-summary-grid {
     grid-template-columns: 1fr;
   }
 
+  /* Welcome card */
   .welcome-card {
-    padding: 24px;
+    padding: 20px;
     flex-direction: column;
   }
 
   .welcome-text h1 {
-    font-size: 22px;
+    font-size: 20px;
   }
 
   .welcome-text p {
     font-size: 14px;
   }
 
+  /* Ranking table — fit inside screen without horizontal scroll */
   .ranking-table-card {
-    overflow-x: auto;
+    overflow-x: visible;
   }
 
   .ranking-table {
-    min-width: 480px;
+    min-width: unset;
+    width: 100%;
+    table-layout: fixed;
   }
 
+  .ranking-table th,
+  .ranking-table td {
+    padding: 10px 8px;
+  }
+
+  .ranking-table th:first-child,
+  .ranking-table td:first-child {
+    width: 38px;
+  }
+
+  .ranking-table th:last-child,
+  .ranking-table td:last-child {
+    width: 90px;
+  }
+
+  .rank-user-name {
+    font-size: 13px;
+  }
+
+  .rank-score-total {
+    font-size: 13px;
+  }
+
+  .rank-expand-hint {
+    font-size: 10px;
+  }
+
+  /* Final card — tighter on narrow screens */
+  .final-abbr {
+    font-size: 34px;
+  }
+
+  .final-score-box {
+    min-width: 100px;
+    padding: 8px 12px;
+  }
+
+  .final-box-score {
+    font-size: 26px;
+  }
+
+  .final-box-pred-score {
+    font-size: 22px;
+  }
+
+  .final-flag-wrap {
+    width: 56px;
+    height: 42px;
+  }
+
+  /* Date ribbon */
   .date-selector-ribbon {
-    padding: 12px 16px;
+    padding: 10px 14px;
   }
 
   .date-btn {
@@ -1747,8 +1960,9 @@ body {
     font-size: 12px;
   }
 
+  /* Match card */
   .match-card {
-    padding: 16px;
+    padding: 14px;
   }
 
   .team-name-abbr {
@@ -1776,5 +1990,13 @@ body {
 
   .live-minute {
     font-size: 18px;
+  }
+
+  /* FAB — no longer needs to clear bottom nav */
+  .share-fab {
+    bottom: 20px;
+    right: 16px;
+    width: 50px;
+    height: 50px;
   }
 }
