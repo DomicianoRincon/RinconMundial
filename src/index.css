@@ -543,6 +543,7 @@ body {
   padding: 4px 0;
   scroll-behavior: smooth;
   scrollbar-width: none; /* Firefox */
+  position: relative;
 }
 
 .dates-scroll-container::-webkit-scrollbar {

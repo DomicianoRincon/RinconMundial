@@ -101,8 +101,7 @@ export default function App() {
   // Today's date in GMT-5 (Bogota)
   const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
 
-  // Refs for auto-scrolling the active date button into view
-  const selectedDateRef = useRef(null);
+  // Ref for the dates scroll container
   const datesScrollRef = useRef(null);
 
   // Matches schedules and formatting
@@ -234,20 +233,33 @@ export default function App() {
     return unsubscribe;
   }, [user]);
 
-  // Scroll active date button to center of ribbon
+  // When entering predicciones, reset selection to today (or closest upcoming day)
   useEffect(() => {
-    const container = datesScrollRef.current;
-    const btn = selectedDateRef.current;
-    if (!container || !btn) return;
-    // Use rAF to ensure layout is complete before reading dimensions
-    const frame = requestAnimationFrame(() => {
-      const containerWidth = container.offsetWidth;
-      const btnLeft = btn.offsetLeft;
-      const btnWidth = btn.offsetWidth;
-      container.scrollTo({ left: btnLeft - containerWidth / 2 + btnWidth / 2, behavior: "smooth" });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [selectedDate]);
+    if (currentTab !== "predicciones" || !dates.length) return;
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
+    const target = dates.includes(today) ? today : (dates.find(d => d >= today) || dates[0]);
+    setSelectedDate(target);
+  }, [currentTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll selected date button to center of ribbon
+  useEffect(() => {
+    if (currentTab !== "predicciones" || !selectedDate) return;
+    const doScroll = () => {
+      const container = datesScrollRef.current;
+      if (!container) return;
+      // Query the active button directly — avoids ref timing issues on mobile
+      const btn = container.querySelector('.date-btn.active');
+      if (!btn) return;
+      container.scrollLeft = Math.max(
+        0,
+        btn.offsetLeft - container.clientWidth / 2 + btn.offsetWidth / 2
+      );
+    };
+    // Two attempts: right after paint and after a longer delay for slow devices
+    const t1 = setTimeout(doScroll, 0);
+    const t2 = setTimeout(doScroll, 350);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [currentTab, selectedDate, dates.length]);
 
   // One-shot fetch when user enters the app (matches already loaded)
   useEffect(() => {
@@ -590,29 +602,26 @@ export default function App() {
   const generateShareImage = async () => {
     const W = 900;
     const PADDING = 36;
-    const HEADER_H = 96;
-    const SEP = 10;
-    const ROW_H = 96;
-    const FOOTER_H = 84;
+    const HEADER_H = 90;
+    const SEP = 8;
+    const ROW_H = 88;
+    const FOOTER_H = 44;
     const FLAG_W = 56;
     const FLAG_H = 40;
     const FLAG_R = 7;
 
     const dayMatches = matches.filter(m => m.date === selectedDate);
-    const rows = dayMatches.map(m => {
-      const real = officialResults[m.id];
-      const pred = predictions[`${user.email}_${m.id}`];
-      const hasReal = real && real.homeScore !== "" && real.homeScore !== undefined;
-      const hasPred = pred && pred.predictedHome !== "" && pred.predictedAway !== "";
-      const pts = (hasReal && hasPred)
-        ? calculatePoints(pred.predictedHome, pred.predictedAway, real.homeScore, real.awayScore)
-        : null;
-      return { m, real, pred, hasReal, hasPred, pts };
-    });
 
-    const totalDayPts = rows.reduce((acc, r) => acc + (r.pts ?? 0), 0);
+    // Only include matches where the user has a prediction
+    const rows = dayMatches
+      .map(m => {
+        const pred = predictions[`${user.email}_${m.id}`];
+        const hasPred = pred && pred.predictedHome !== "" && pred.predictedAway !== "";
+        return hasPred ? { m, pred } : null;
+      })
+      .filter(Boolean);
 
-    // Pre-load all flag images
+    // Pre-load flag images
     const loadImg = url => new Promise(res => {
       if (!url) return res(null);
       const img = new Image();
@@ -651,12 +660,8 @@ export default function App() {
       ctx.save();
       rrPath(x, y, FLAG_W, FLAG_H, FLAG_R);
       ctx.clip();
-      if (img) {
-        ctx.drawImage(img, x, y, FLAG_W, FLAG_H);
-      } else {
-        ctx.fillStyle = '#1f2937';
-        ctx.fill();
-      }
+      if (img) { ctx.drawImage(img, x, y, FLAG_W, FLAG_H); }
+      else { ctx.fillStyle = '#1f2937'; ctx.fill(); }
       ctx.restore();
       ctx.save();
       rrPath(x, y, FLAG_W, FLAG_H, FLAG_R);
@@ -676,8 +681,6 @@ export default function App() {
     // ── Background ───────────────────────────────────────
     ctx.fillStyle = '#0d1117';
     ctx.fillRect(0, 0, W, H);
-
-    // Outer border
     ctx.strokeStyle = 'rgba(0, 255, 135, 0.35)';
     ctx.lineWidth = 2;
     rrPath(3, 3, W - 6, H - 6, 18);
@@ -687,114 +690,73 @@ export default function App() {
     ctx.fillStyle = '#00ff87';
     ctx.font = 'bold 20px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText('RINCONMUNDIAL', PADDING, 40);
+    ctx.fillText('RINCONMUNDIAL', PADDING, 38);
 
     ctx.fillStyle = '#9ca3af';
     ctx.font = '13px system-ui, -apple-system, sans-serif';
-    ctx.fillText(formatDateToSpanish(selectedDate).toUpperCase(), PADDING, 64);
+    ctx.fillText(formatDateToSpanish(selectedDate).toUpperCase(), PADDING, 60);
 
     const shortName = currentUserProfile.name.split(' ')[0].toUpperCase();
     ctx.fillStyle = '#e5e7eb';
     ctx.font = 'bold 15px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(shortName, W - PADDING, 40);
+    ctx.fillText(shortName, W - PADDING, 38);
     ctx.fillStyle = '#6b7280';
     ctx.font = '12px system-ui, -apple-system, sans-serif';
-    ctx.fillText('MIS PREDICCIONES', W - PADDING, 62);
+    ctx.fillText('MIS PREDICCIONES', W - PADDING, 60);
 
-    ctx.strokeStyle = 'rgba(0, 255, 135, 0.2)';
+    ctx.strokeStyle = 'rgba(0, 255, 135, 0.18)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(PADDING, HEADER_H - 2);
-    ctx.lineTo(W - PADDING, HEADER_H - 2);
+    ctx.moveTo(PADDING, HEADER_H - 4);
+    ctx.lineTo(W - PADDING, HEADER_H - 4);
     ctx.stroke();
 
-    // ── Match rows ───────────────────────────────────────
-    // Column centers: flags align to outer edges, names centered under flags
-    const LEFT_FLAG_X = PADDING;                       // left flag left edge
-    const RIGHT_FLAG_X = W - PADDING - FLAG_W;        // right flag left edge
-    const LEFT_CENTER = LEFT_FLAG_X + FLAG_W / 2;     // x center of left flag/name
-    const RIGHT_CENTER = RIGHT_FLAG_X + FLAG_W / 2;   // x center of right flag/name
-    const NAME_MAX_W = (W / 2) - LEFT_CENTER - 16;    // max name width before center zone
+    // ── Match rows (predictions only) ────────────────────
+    const LEFT_FLAG_X  = PADDING;
+    const RIGHT_FLAG_X = W - PADDING - FLAG_W;
+    const LEFT_CENTER  = LEFT_FLAG_X  + FLAG_W / 2;
+    const RIGHT_CENTER = RIGHT_FLAG_X + FLAG_W / 2;
+    const NAME_MAX_W   = W / 2 - LEFT_CENTER - 20;
 
-    rows.forEach(({ m, real, pred, hasReal, hasPred, pts }, idx) => {
-      const rowY = HEADER_H + SEP + idx * ROW_H;
-      const flagY = rowY + (ROW_H - FLAG_H - 20) / 2; // flag vertical center (leaving room for name)
-      const nameY = flagY + FLAG_H + 14;               // name baseline below flag
+    rows.forEach(({ m, pred }, idx) => {
+      const rowY  = HEADER_H + SEP + idx * ROW_H;
+      const flagY = rowY + (ROW_H - FLAG_H - 18) / 2;
+      const nameY = flagY + FLAG_H + 13;
+      const predY = flagY + FLAG_H / 2 + 8; // vertically centered with flag
 
-      // Zebra stripe
       if (idx % 2 === 0) {
         ctx.fillStyle = 'rgba(255,255,255,0.025)';
         ctx.fillRect(PADDING - 8, rowY + 2, W - (PADDING - 8) * 2, ROW_H - 4);
       }
 
-      // Left flag + name
+      // Left team: flag + name
       drawFlag(flagImgs[m.team1], LEFT_FLAG_X, flagY);
       ctx.fillStyle = '#d1d5db';
       ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(truncate(translateTeamToSpanish(m.team1).toUpperCase(), NAME_MAX_W * 2), LEFT_CENTER, nameY);
 
-      // Right flag + name
+      // Right team: flag + name
       drawFlag(flagImgs[m.team2], RIGHT_FLAG_X, flagY);
       ctx.fillStyle = '#d1d5db';
       ctx.font = 'bold 13px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(truncate(translateTeamToSpanish(m.team2).toUpperCase(), NAME_MAX_W * 2), RIGHT_CENTER, nameY);
 
-      // Center: score
-      const scoreCenterY = flagY + FLAG_H / 2 + 2;
-      const scoreText = hasReal ? `${real.homeScore}  —  ${real.awayScore}` : 'vs';
-      ctx.fillStyle = hasReal ? '#ffffff' : '#4b5563';
-      ctx.font = hasReal ? 'bold 26px system-ui, -apple-system, sans-serif' : '16px system-ui, -apple-system, sans-serif';
+      // Center: prediction score (prominent)
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 30px system-ui, -apple-system, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(scoreText, W / 2, scoreCenterY);
-
-      // Center: prediction
-      if (hasPred) {
-        ctx.fillStyle = '#9ca3af';
-        ctx.font = '12px system-ui, -apple-system, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(`Pred: ${pred.predictedHome} - ${pred.predictedAway}`, W / 2, nameY - 2);
-      }
-
-      // Center: points pill
-      if (pts !== null) {
-        const ptsLabel = `+${pts} PTS`;
-        const ptsColor = pts === 0 ? '#6b7280' : pts >= 5 ? '#fbbf24' : '#00ff87';
-        const pillBg = pts === 0 ? 'rgba(107,114,128,0.2)' : pts >= 5 ? 'rgba(251,191,36,0.15)' : 'rgba(0,255,135,0.14)';
-        ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
-        const pillW = ctx.measureText(ptsLabel).width + 16;
-        const pillH = 20;
-        const pillX = W / 2 - pillW / 2;
-        const pillY = nameY + 4;
-        ctx.fillStyle = pillBg;
-        rrPath(pillX, pillY, pillW, pillH, 5);
-        ctx.fill();
-        ctx.fillStyle = ptsColor;
-        ctx.textAlign = 'center';
-        ctx.fillText(ptsLabel, W / 2, pillY + 14);
-      }
+      ctx.fillText(`${pred.predictedHome}  —  ${pred.predictedAway}`, W / 2, predY);
     });
 
-    // ── Footer ───────────────────────────────────────────
-    const divY = HEADER_H + SEP + rows.length * ROW_H + 6;
-    ctx.strokeStyle = 'rgba(0, 255, 135, 0.2)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(PADDING, divY);
-    ctx.lineTo(W - PADDING, divY);
-    ctx.stroke();
-
-    const footerMid = divY + FOOTER_H / 2;
-    const totalColor = totalDayPts === 0 ? '#6b7280' : totalDayPts >= 10 ? '#fbbf24' : '#00ff87';
-    ctx.fillStyle = totalColor;
-    ctx.font = 'bold 34px system-ui, -apple-system, sans-serif';
+    // ── Footer branding ──────────────────────────────────
+    const footerY = HEADER_H + SEP + rows.length * ROW_H + SEP;
+    ctx.fillStyle = '#374151';
+    ctx.font = '11px system-ui, -apple-system, sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`+${totalDayPts} PTS`, W / 2, footerMid + 8);
-    ctx.fillStyle = '#6b7280';
-    ctx.font = 'bold 11px system-ui, -apple-system, sans-serif';
-    ctx.fillText('TOTAL DEL DÍA', W / 2, footerMid + 28);
+    ctx.fillText('rinconmundial · mundial 2026', W / 2, footerY + 26);
 
     return new Promise(res => canvas.toBlob(res, 'image/png'));
   };
@@ -1097,7 +1059,6 @@ export default function App() {
                   {dates.map((d) => (
                     <button
                       key={d}
-                      ref={selectedDate === d ? selectedDateRef : null}
                       className={`date-btn ${selectedDate === d ? "active" : ""} ${d === todayStr && selectedDate !== d ? "today" : ""}`}
                       onClick={() => setSelectedDate(d)}
                     >
