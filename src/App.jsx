@@ -992,7 +992,7 @@ export default function App() {
           <div className="header-title-section">
             <span className="header-subtitle">POLLETA MUNDIALISTA</span>
             <h1 className="header-title">
-              FIFA WORLD CUP <Trophy size={22} />
+              <span className="header-title-text">FIFA WORLD CUP </span><Trophy size={22} />
             </h1>
           </div>
           <div className="user-profile">
@@ -1418,8 +1418,8 @@ export default function App() {
                 <table className="ranking-table">
                   <thead>
                     <tr>
-                      <th>PUESTO</th>
-                      <th>COMPETIDOR</th>
+                      <th className="th-puesto">PUESTO</th>
+                      <th className="th-competidor">COMPETIDOR</th>
                       <th style={{ textAlign: "right" }}>PUNTOS</th>
                     </tr>
                   </thead>

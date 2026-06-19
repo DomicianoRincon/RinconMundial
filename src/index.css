@@ -2022,4 +2022,36 @@ body {
     width: 50px;
     height: 50px;
   }
+
+  /* Header: hide subtitle, title text, and user info — show only trophy icon + avatar */
+  .header-subtitle {
+    display: none;
+  }
+
+  .header-title-text {
+    display: none;
+  }
+
+  .user-info {
+    display: none;
+  }
+
+  /* Ranking table headers: shorter labels — needs .ranking-table specificity to win */
+  .ranking-table th.th-puesto {
+    font-size: 0;
+  }
+
+  .ranking-table th.th-puesto::before {
+    content: "#";
+    font-size: 11px;
+  }
+
+  .ranking-table th.th-competidor {
+    font-size: 0;
+  }
+
+  .ranking-table th.th-competidor::before {
+    content: "NOMBRE";
+    font-size: 11px;
+  }
 }
