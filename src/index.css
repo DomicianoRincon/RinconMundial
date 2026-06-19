@@ -1930,12 +1930,27 @@ body {
 
   /* Final card — tighter on narrow screens */
   .final-abbr {
-    font-size: 34px;
+    display: none; /* flag + name are enough on mobile */
+  }
+
+  .final-card-body {
+    padding: 0 14px 16px;
+    gap: 8px;
+  }
+
+  .final-flag-wrap {
+    width: 62px;
+    height: 46px;
+  }
+
+  .final-team-name-label {
+    font-size: 11px;
+    max-width: 80px;
   }
 
   .final-score-box {
-    min-width: 100px;
-    padding: 8px 12px;
+    min-width: 92px;
+    padding: 8px 10px;
   }
 
   .final-box-score {
@@ -1946,9 +1961,11 @@ body {
     font-size: 22px;
   }
 
-  .final-flag-wrap {
-    width: 56px;
-    height: 42px;
+  .rival-name {
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* Date ribbon */
@@ -1964,6 +1981,11 @@ body {
   /* Match card */
   .match-card {
     padding: 14px;
+  }
+
+  /* Two-class selector beats .match-card alone — keeps final card flush */
+  .match-card.match-card-final {
+    padding: 0;
   }
 
   .team-name-abbr {

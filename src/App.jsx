@@ -182,9 +182,8 @@ export default function App() {
       const uniqueDates = [...new Set(parsedMatches.map(m => m.date))].sort();
       setDates(uniqueDates);
 
-      // Select date by default: check current date in GMT-5
-      const nowGMT5 = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Bogota" }));
-      const todayStr = nowGMT5.toISOString().split("T")[0];
+      // Select date by default — use Intl to get today in Bogotá timezone directly
+      const todayStr = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Bogota" }).format(new Date());
 
       if (uniqueDates.includes(todayStr)) {
         setSelectedDate(todayStr);
