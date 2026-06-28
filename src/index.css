@@ -2302,3 +2302,174 @@ body {
   color: #00ff87;
   letter-spacing: 0.5px;
 }
+
+/* ─── Knockout Bracket ─────────────────────────────────────── */
+.bracket-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -16px;
+  padding: 0 16px 16px;
+}
+
+.bracket-inner {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.bracket-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.bracket-col:not(:last-child) {
+  margin-right: 24px;
+}
+
+.bracket-col-header {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  text-align: center;
+  padding-bottom: 8px;
+  white-space: nowrap;
+}
+
+.bracket-slots {
+  display: flex;
+  flex-direction: column;
+}
+
+.bracket-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.bracket-slot-1  { height: 80px; }
+.bracket-slot-2  { height: 160px; }
+.bracket-slot-4  { height: 320px; }
+.bracket-slot-8  { height: 640px; }
+.bracket-slot-16 { height: 1280px; }
+
+/* Right-side horizontal connector line into the gap */
+.bracket-col:not(:last-child) .bracket-slot::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -16px;
+  width: 16px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.13);
+  transform: translateY(-0.5px);
+}
+
+/* Vertical bracket line from center of odd slot to center of next (even) slot */
+.bracket-col:not(:last-child) .bracket-slot:nth-child(odd)::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -16px;
+  width: 1px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.13);
+}
+
+/* Bracket match card */
+.bk-card {
+  width: 154px;
+  background: rgba(18, 22, 35, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 7px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+/* Left-side horizontal connector for cards in non-first columns */
+.bracket-col:not(:first-child) .bk-card::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 16px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.13);
+  transform: translateY(-0.5px);
+}
+
+.bk-date {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+}
+
+.bk-team {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.bk-flag {
+  width: 18px;
+  height: 12px;
+  border-radius: 2px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.bk-tbd-dot {
+  width: 18px;
+  height: 12px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.07);
+  flex-shrink: 0;
+}
+
+.bk-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.bk-name-tbd {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.bk-team-winner .bk-name {
+  color: var(--neon-green);
+}
+
+.bk-team-winner .bk-flag {
+  box-shadow: 0 0 0 1px rgba(0, 255, 135, 0.4);
+}
+
+.bk-score {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.bk-score-win {
+  color: var(--neon-green);
+}
+
+.bk-score-live {
+  color: var(--neon-cyan);
+}

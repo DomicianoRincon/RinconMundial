@@ -609,6 +609,64 @@ export default function App() {
 
   const translateTeamToSpanish = (teamName) => TEAM_ES[teamName] || teamName;
 
+  // ── Knockout bracket helpers ──────────────────────────────
+  const getMatchByNum = (num) => matches.find(m => m.num === num);
+
+  const resolveWinnerOrLoser = (matchNum, wantWinner) => {
+    const m = getMatchByNum(matchNum);
+    if (!m) return null;
+    const r = officialResults[m.id];
+    if (r && r.homeScore !== "" && r.homeScore !== undefined) {
+      const h = parseInt(r.homeScore, 10), a = parseInt(r.awayScore, 10);
+      if (h !== a) return wantWinner ? (h > a ? m.team1 : m.team2) : (h > a ? m.team2 : m.team1);
+    }
+    const live = liveScores[m.id];
+    if (live && isFinalStatus(live) && live.homeScore !== "") {
+      const h = parseInt(live.homeScore, 10), a = parseInt(live.awayScore, 10);
+      if (h !== a) return wantWinner ? (h > a ? m.team1 : m.team2) : (h > a ? m.team2 : m.team1);
+    }
+    return null;
+  };
+
+  const resolveBracketTeam = (placeholder) => {
+    if (!placeholder) return null;
+    if (placeholder.startsWith('W')) return resolveWinnerOrLoser(parseInt(placeholder.slice(1), 10), true);
+    if (placeholder.startsWith('L')) return resolveWinnerOrLoser(parseInt(placeholder.slice(1), 10), false);
+    return placeholder;
+  };
+
+  const renderBracketCard = (matchNum) => {
+    const m = getMatchByNum(matchNum);
+    if (!m) return null;
+    const t1 = resolveBracketTeam(m.team1);
+    const t2 = resolveBracketTeam(m.team2);
+    const r = officialResults[m.id];
+    const live = liveScores[m.id];
+    const hasResult = r && r.homeScore !== "" && r.homeScore !== undefined;
+    const isLive = isLiveStatus(live);
+    const [, mo, dy] = m.date.split('-').map(Number);
+    const dateStr = `${dy}/${mo}, ${formatKickoffColombia(m.kickoff)}`;
+    const rH = hasResult ? parseInt(r.homeScore, 10) : null;
+    const rA = hasResult ? parseInt(r.awayScore, 10) : null;
+    return (
+      <div className="bk-card" key={matchNum}>
+        <span className="bk-date">{dateStr}</span>
+        <div className={`bk-team${hasResult && rH > rA ? ' bk-team-winner' : ''}`}>
+          {t1 ? <img className="bk-flag" src={getFlagUrl(t1)} alt={t1} onError={e => { e.target.style.opacity = '0'; }} /> : <span className="bk-tbd-dot" />}
+          <span className={`bk-name${!t1 ? ' bk-name-tbd' : ''}`}>{t1 ? translateTeamToSpanish(t1) : 'A definir'}</span>
+          {hasResult && <span className={`bk-score${rH > rA ? ' bk-score-win' : ''}`}>{rH}</span>}
+          {!hasResult && isLive && live.homeScore !== '' && <span className="bk-score bk-score-live">{live.homeScore}</span>}
+        </div>
+        <div className={`bk-team${hasResult && rA > rH ? ' bk-team-winner' : ''}`}>
+          {t2 ? <img className="bk-flag" src={getFlagUrl(t2)} alt={t2} onError={e => { e.target.style.opacity = '0'; }} /> : <span className="bk-tbd-dot" />}
+          <span className={`bk-name${!t2 ? ' bk-name-tbd' : ''}`}>{t2 ? translateTeamToSpanish(t2) : 'A definir'}</span>
+          {hasResult && <span className={`bk-score${rA > rH ? ' bk-score-win' : ''}`}>{rA}</span>}
+          {!hasResult && isLive && live.awayScore !== '' && <span className="bk-score bk-score-live">{live.awayScore}</span>}
+        </div>
+      </div>
+    );
+  };
+
   // ── Share image ────────────────────────────────────────
   const generateShareImage = async () => {
     const W = 480;
@@ -1082,6 +1140,52 @@ export default function App() {
                   </div>
                 ))}
               </div>
+
+              <h2 style={{ fontSize: "20px", fontWeight: "800", marginTop: "24px", marginBottom: "4px" }}>Eliminatoria</h2>
+              {matches.length > 0 && (
+                <div className="bracket-scroll">
+                  <div className="bracket-inner">
+                    <div className="bracket-col">
+                      <div className="bracket-col-header">Eliminatoria de 32</div>
+                      <div className="bracket-slots">
+                        {[73,75,74,77,82,81,84,83,76,78,79,80,85,87,88,86].map(num => (
+                          <div key={num} className="bracket-slot bracket-slot-1">{renderBracketCard(num)}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bracket-col">
+                      <div className="bracket-col-header">Octavos de Final</div>
+                      <div className="bracket-slots">
+                        {[90,89,94,93,91,92,96,95].map(num => (
+                          <div key={num} className="bracket-slot bracket-slot-2">{renderBracketCard(num)}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bracket-col">
+                      <div className="bracket-col-header">Cuartos de Final</div>
+                      <div className="bracket-slots">
+                        {[97,98,99,100].map(num => (
+                          <div key={num} className="bracket-slot bracket-slot-4">{renderBracketCard(num)}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bracket-col">
+                      <div className="bracket-col-header">Semifinales</div>
+                      <div className="bracket-slots">
+                        {[101,102].map(num => (
+                          <div key={num} className="bracket-slot bracket-slot-8">{renderBracketCard(num)}</div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bracket-col">
+                      <div className="bracket-col-header">Final</div>
+                      <div className="bracket-slots">
+                        <div className="bracket-slot bracket-slot-16">{renderBracketCard(104)}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
