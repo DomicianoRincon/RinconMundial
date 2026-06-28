@@ -35,6 +35,7 @@ const ESPN_TO_LOCAL_TEAM = {
   "IR Iran": "Iran",
   "Côte d'Ivoire": "Ivory Coast",
   "Türkiye": "Turkey",
+  "Congo DR": "DR Congo",
 };
 
 const SANTO_Y_SENA = "hkx213bp";

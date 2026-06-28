@@ -8,6 +8,7 @@ Permitir el acceso exclusivo a la aplicación utilizando cuentas de Google (Goog
 
 ## Requisitos
 1. **Acceso Exclusivo con Google**: El sistema restringe el acceso a toda la aplicación mediante una pantalla de inicio de sesión que usa Firebase Auth con `GoogleAuthProvider` y `signInWithPopup`.
+1a. **Doble barrera de entrada**: Antes de habilitar el botón de Google Sign-In, el usuario debe ingresar la passphrase familiar (`hkx213bp`, constante `SANTO_Y_SENA`). El input es de tipo `password` con feedback visual (`✓` verde) al coincidir. Solo cuando el input coincide exactamente se habilita el botón de Google. Presionar `Enter` con la passphrase correcta también dispara el login de Google.
 2. **Filtro de Usuarios Autorizados**:
    - Una vez autenticado el usuario con Google, el sistema valida si el correo electrónico contiene alguno de los prefijos autorizados: `domi`, `juliana` o `papa` (comparación en minúsculas sobre la dirección completa de email).
    - Si el email no contiene ninguno de esos prefijos, se llama a `signOut(auth)` inmediatamente y se muestra el error en pantalla.

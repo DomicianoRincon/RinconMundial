@@ -9,7 +9,7 @@ Calcular el puntaje de cada usuario comparando sus predicciones contra los resul
 ## Requisitos
 
 ### Resolución de Usuarios en el Leaderboard
-1. **Prefijos Fijos**: El leaderboard itera sobre los tres prefijos `["domi", "juliana", "papa"]`. Para cada partido, busca en el objeto `predictions` del estado local una clave que comience con el prefijo del usuario y termine con el `id` del partido (`k.startsWith(key) && k.endsWith(m.id)`). Esto permite encontrar predicciones independientemente del dominio del email del usuario.
+1. **Usuarios de Firestore**: El leaderboard itera sobre `registeredUsers`, que es la colección `users` de Firestore escuchada con `onSnapshot`. Cada objeto tiene `email`, `displayName`, `photoURL` y `uid`. La búsqueda de predicciones para cada usuario usa la clave `${u.email}_${m.id}` directamente (lookup exacto por email, no por prefijo). Esto requiere que el email del usuario en Firestore coincida exactamente con el email usado al crear la predicción.
 
 ### Ecuación de Puntuación (Aditiva, máximo 7 puntos por partido)
 2. **Puntos por partido**:
@@ -29,12 +29,16 @@ Calcular el puntaje de cada usuario comparando sus predicciones contra los resul
 ### Tabla de Ranking
 4. **Columnas mostradas**: Puesto (#1, #2, #3), Competidor (avatar de iniciales + nombre), Pronósticos (número de partidos con predicción guardada), Acierto Exacto (+3) (número de aciertos exactos), Acierto Ganador (+2) (número de aciertos de ganador/empate), Puntos Totales.
    - Nota: `goalsHits` (aciertos de goles individuales) se calcula internamente pero no se muestra en la tabla.
-5. **Ordenamiento**: Mayor a menor por `totalPoints`. En empate: mayor `exactHits`. En segundo empate: mayor `winnerHits`.
-6. **Colores de posición**: Primer puesto en dorado (`#fbbf24`), segundo en plateado (`#94a3b8`), tercero en bronce (`#b45309`).
+5. **livePoints**: Si hay partidos en curso con marcador ESPN disponible, el leaderboard calcula `livePoints` adicionales (puntos que el usuario obtendría si el marcador en vivo fuera el resultado final). El ordenamiento usa `totalPoints + livePoints`; la UI los diferencia visualmente con un badge.
+6. **Ordenamiento**: Mayor a menor por `totalPoints + livePoints`. En empate: mayor `exactHits`. En segundo empate: mayor `winnerHits`.
+7. **Colores de posición**: Primer puesto en dorado (`#fbbf24`), segundo en plateado (`#94a3b8`), tercero en bronce (`#b45309`).
 
 ### Transparencia de Predicciones
 7. **Predicciones rivales en tarjeta de partido**: Una vez que un partido inicia (bloqueado), cualquier usuario puede ver en la tarjeta del partido las predicciones de los otros dos participantes, junto con los puntos obtenidos si ya hay marcador real. (Implementado en la vista Predicciones, ver Spec 003.)
 8. **Predicciones antes del inicio**: No se muestran las predicciones de rivales mientras el partido no haya comenzado.
+
+### Historial expandible por usuario
+8. **Desglose de partidos**: Al hacer clic en una fila del ranking, se expande un panel con todos los partidos pasados donde ese usuario tiene predicción. Por cada partido se muestran: fecha abreviada (ej. `14 jun`), banderas, predicción, resultado real o en vivo, puntos obtenidos y badges de acierto (Exacto / Ganador / Gol Local / Gol Visitante). Ordenados de más reciente a más antiguo. Ver Spec 003 §13.
 
 ### Mini Tabla en Vista Inicio
 9. **Resumen de posiciones**: La vista "Inicio" muestra una versión condensada del leaderboard con puesto, nombre y puntos totales + marcadores exactos para cada participante.
@@ -70,8 +74,8 @@ Calcular el puntaje de cada usuario comparando sus predicciones contra los resul
 
 ## Assumptions to review
 
-1. La búsqueda de predicciones por prefijo (`k.startsWith(key)`) puede colisionar si un email comienza con `papa` y también contiene `domi` — Impact: MEDIUM
-   Correct this if: se agrega un cuarto usuario cuyo email comienza con un prefijo que es subcadena de otro.
+1. La búsqueda de predicciones usa el email exacto del usuario (`${u.email}_${m.id}`), por lo que depende de que el email en Firestore (`users` collection) sea idéntico al usado al guardar la predicción. Siempre es así en la implementación actual porque ambos vienen del mismo `user.email` de Firebase Auth — Impact: LOW
+   Correct this if: se migra a un sistema de aliases o se permite cambio de email de Google.
 
 2. `goalsHits` se calcula (suma de aciertos de goles local + visitante por partido) pero no se expone en la tabla de ranking — Impact: LOW
    Correct this if: se decide mostrar una columna adicional de goles acertados o usar goalsHits como tercer criterio de desempate visible.

@@ -10,8 +10,10 @@ Proporcionar una interfaz web de página única (SPA) con tres vistas navegables
 
 ### Layout General
 1. **SPA sin Router**: La aplicación no usa React Router. La navegación entre vistas se gestiona con estado local (`currentTab`: `"inicio"` | `"predicciones"` | `"ranking"`). No hay URLs separadas por vista.
-2. **Sidebar de Navegación**: Barra lateral izquierda fija con tres ítems: "INICIO" (ícono Home), "PREDICCIONES" (ícono CheckSquare) y "RANKING" (ícono Trophy). La tab activa al iniciar sesión es siempre "predicciones".
-3. **Encabezado**: Muestra a la derecha el nombre del usuario logueado (resuelto desde `USER_PROFILES`) y su avatar (foto de Google `photoURL` o iniciales del perfil).
+2. **Sidebar de Navegación (desktop)**: Barra lateral izquierda fija con logo del mundial, tres ítems de navegación: "INICIO" (ícono Home), "PREDICCIONES" (ícono CheckSquare) y "RANKING" (ícono Trophy), y botón "CERRAR SESIÓN" al fondo. La tab activa al iniciar sesión es siempre "predicciones".
+3. **Drawer móvil**: En móvil, la sidebar se oculta y se reemplaza por un botón hamburguesa (ícono `Menu`) en el header. Al pulsarlo, se desliza un panel desde la izquierda (`drawer-panel`) con el mismo contenido que la sidebar. Un overlay oscuro detrás permite cerrar el drawer al tocarlo. El botón `X` en el drawer también lo cierra.
+4. **Encabezado**: Contiene (izq→der): botón hamburguesa (solo móvil), título "RINCON MUNDIAL" con logo, nombre del usuario logueado (de `firebaseUser.displayName`), rol "Participante" y avatar (foto de Google `photoURL` si existe, o iniciales en caso contrario). También incluye el botón de compartir predicciones (`Share2`) visible en la vista Predicciones (ver Spec 007).
+5. **Pantalla de bienvenida (`?invite`)**: Si la URL tiene el parámetro `?invite` y el usuario completa el login, se muestra una pantalla de bienvenida personalizada (nombre, foto de Google, mensaje de confirmación) antes de entrar al panel principal. El botón "Entrar al panel →" limpia el query param y redirige a la vista de predicciones.
 
 ### Vista: Inicio
 4. **Tarjeta de bienvenida**: Saludo personalizado con el nombre del usuario y descripción breve del funcionamiento de la polla.
@@ -21,8 +23,9 @@ Proporcionar una interfaz web de página única (SPA) con tres vistas navegables
 6. **Selector de fecha (ribbon)**: Barra horizontal desplazable con un botón por cada fecha que tiene partidos. La fecha activa se resalta. Las fechas se muestran en español (ej. "JUNIO 18").
 7. **Tarjetas de partido (Match Cards)**: Una tarjeta por partido de la fecha seleccionada, con:
    - Header: grupo del partido y contador regresivo (countdown).
-   - Cuerpo: bandera (vía flagcdn.com), abreviatura del equipo (3 letras) y nombre en español del equipo local, inputs de predicción, equipo visitante.
+   - Cuerpo: bandera (PNG local de `public/flags/` vía `getFlagUrl`), abreviatura del equipo (3 letras de `TEAM_ABBR`) y nombre en español del equipo local (de `TEAM_ES`), inputs de predicción, equipo visitante.
    - Footer: nombre del estadio (`ground`) e indicador de estado del autoguardado.
+   - Si hay marcador ESPN en vivo (`liveScores[matchId]`), se muestra el marcador en tiempo real y el reloj/período del partido dentro de la tarjeta.
 8. **Countdown por tarjeta**: Mientras el partido no haya comenzado, muestra `CIERRA EN Xh Ym Zs` (o `Ym Zs` si faltan menos de 60 minutos). Una vez iniciado, muestra `CERRADO`. El contador se actualiza cada segundo.
 9. **Bloqueo de Inputs por Tiempo**:
    - Antes del inicio del partido (`currentTime < kickoff`): inputs de predicción habilitados.
@@ -33,6 +36,8 @@ Proporcionar una interfaz web de página única (SPA) con tres vistas navegables
 
 ### Vista: Ranking
 12. **Tabla de posiciones completa**: Columnas: Puesto, Competidor (avatar + nombre), Pronósticos (número de partidos predichos), Acierto Exacto (+3), Acierto Ganador (+2), Puntos Totales. Ordenada de mayor a menor puntos, con desempate por aciertos exactos y luego por aciertos ganador.
+13. **Fila expandible por usuario**: Al hacer clic en una fila del ranking, se expande un panel con el historial de todos los partidos pasados donde ese usuario tiene predicción. Por cada partido se muestra: fecha (ej. `14 jun`), banderas y nombres de equipos, predicción del usuario, resultado real (o marcador en vivo), puntos obtenidos y badges de tipo de acierto (Exacto / Ganador / Gol Local / Gol Visitante). Los partidos se ordenan de más reciente a más antiguo. Solo un usuario puede estar expandido a la vez.
+14. **Puntos en vivo (livePoints)**: Si hay partidos en curso, el ranking muestra los puntos que el usuario obtendría con el marcador ESPN actual (`livePoints`) con un badge visual diferenciador. El ordenamiento del ranking usa `totalPoints + livePoints` pero los muestra separados.
 
 ## Casos de Borde
 - **Fecha sin partidos**: Si la fecha seleccionada no tiene partidos, se muestra un estado vacío con ícono de calendario y mensaje descriptivo.
