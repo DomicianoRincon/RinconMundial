@@ -390,6 +390,9 @@ export default function App() {
         const status = comp.status;
         const statusName = status?.type?.name || "";
 
+        const espnHomeWinner = flipped ? espnAway.winner : espnHome.winner;
+        const espnAwayWinner = flipped ? espnHome.winner : espnAway.winner;
+
         const liveData = {
           homeScore: flipped ? espnAway.score : espnHome.score,
           awayScore: flipped ? espnHome.score : espnAway.score,
@@ -397,18 +400,25 @@ export default function App() {
           statusDesc: status?.type?.description || "",
           displayClock: status?.displayClock || "",
           period: status?.period || 0,
+          homeWinner: espnHomeWinner,
+          awayWinner: espnAwayWinner,
         };
 
         newLiveScores[matched.id] = liveData;
 
         const notScheduled = statusName !== "STATUS_SCHEDULED" && statusName !== "SCHEDULED";
         if (notScheduled && liveData.homeScore !== "" && liveData.awayScore !== "") {
-          writes.push(setDoc(doc(db, "official_results", matched.id), {
+          const h = parseInt(liveData.homeScore, 10);
+          const a = parseInt(liveData.awayScore, 10);
+          const firestoreDoc = {
             matchId: matched.id,
-            homeScore: parseInt(liveData.homeScore, 10),
-            awayScore: parseInt(liveData.awayScore, 10),
+            homeScore: h,
+            awayScore: a,
             updatedBy: "espn-auto"
-          }));
+          };
+          if (h === a && espnHomeWinner === true) firestoreDoc.penaltyWinner = matched.team1;
+          else if (h === a && espnAwayWinner === true) firestoreDoc.penaltyWinner = matched.team2;
+          writes.push(setDoc(doc(db, "official_results", matched.id), firestoreDoc));
         }
       });
 
@@ -619,11 +629,14 @@ export default function App() {
     if (r && r.homeScore !== "" && r.homeScore !== undefined) {
       const h = parseInt(r.homeScore, 10), a = parseInt(r.awayScore, 10);
       if (h !== a) return wantWinner ? (h > a ? m.team1 : m.team2) : (h > a ? m.team2 : m.team1);
+      if (h === a && r.penaltyWinner) return wantWinner ? r.penaltyWinner : (r.penaltyWinner === m.team1 ? m.team2 : m.team1);
     }
     const live = liveScores[m.id];
     if (live && isFinalStatus(live) && live.homeScore !== "") {
       const h = parseInt(live.homeScore, 10), a = parseInt(live.awayScore, 10);
       if (h !== a) return wantWinner ? (h > a ? m.team1 : m.team2) : (h > a ? m.team2 : m.team1);
+      if (h === a && live.homeWinner === true) return wantWinner ? m.team1 : m.team2;
+      if (h === a && live.awayWinner === true) return wantWinner ? m.team2 : m.team1;
     }
     return null;
   };
@@ -648,19 +661,22 @@ export default function App() {
     const dateStr = `${dy}/${mo}, ${formatKickoffColombia(m.kickoff)}`;
     const rH = hasResult ? parseInt(r.homeScore, 10) : null;
     const rA = hasResult ? parseInt(r.awayScore, 10) : null;
+    const penaltyWinner = hasResult ? r.penaltyWinner : null;
+    const t1IsWinner = hasResult && (rH > rA || (rH === rA && penaltyWinner === m.team1));
+    const t2IsWinner = hasResult && (rA > rH || (rH === rA && penaltyWinner === m.team2));
     return (
       <div className="bk-card" key={matchNum}>
         <span className="bk-date">{dateStr}</span>
-        <div className={`bk-team${hasResult && rH > rA ? ' bk-team-winner' : ''}`}>
+        <div className={`bk-team${t1IsWinner ? ' bk-team-winner' : ''}`}>
           {t1 ? <img className="bk-flag" src={getFlagUrl(t1)} alt={t1} onError={e => { e.target.style.opacity = '0'; }} /> : <span className="bk-tbd-dot" />}
           <span className={`bk-name${!t1 ? ' bk-name-tbd' : ''}`}>{t1 ? translateTeamToSpanish(t1) : 'A definir'}</span>
-          {hasResult && <span className={`bk-score${rH > rA ? ' bk-score-win' : ''}`}>{rH}</span>}
+          {hasResult && <span className={`bk-score${t1IsWinner ? ' bk-score-win' : ''}`}>{rH}{penaltyWinner === m.team1 ? ' (P)' : ''}</span>}
           {!hasResult && isLive && live.homeScore !== '' && <span className="bk-score bk-score-live">{live.homeScore}</span>}
         </div>
-        <div className={`bk-team${hasResult && rA > rH ? ' bk-team-winner' : ''}`}>
+        <div className={`bk-team${t2IsWinner ? ' bk-team-winner' : ''}`}>
           {t2 ? <img className="bk-flag" src={getFlagUrl(t2)} alt={t2} onError={e => { e.target.style.opacity = '0'; }} /> : <span className="bk-tbd-dot" />}
           <span className={`bk-name${!t2 ? ' bk-name-tbd' : ''}`}>{t2 ? translateTeamToSpanish(t2) : 'A definir'}</span>
-          {hasResult && <span className={`bk-score${rA > rH ? ' bk-score-win' : ''}`}>{rA}</span>}
+          {hasResult && <span className={`bk-score${t2IsWinner ? ' bk-score-win' : ''}`}>{rA}{penaltyWinner === m.team2 ? ' (P)' : ''}</span>}
           {!hasResult && isLive && live.awayScore !== '' && <span className="bk-score bk-score-live">{live.awayScore}</span>}
         </div>
       </div>
